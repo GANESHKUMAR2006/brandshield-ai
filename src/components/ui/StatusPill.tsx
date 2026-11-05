@@ -1,0 +1,63 @@
+import React from "react";
+import { ClaimStatus, SubmissionStatus } from "@/types";
+import { Badge } from "./Badge";
+
+interface StatusPillProps {
+  status: SubmissionStatus | ClaimStatus | string;
+  className?: string;
+}
+
+const statusMap: Record<
+  string,
+  { label: string; variant: "default" | "success" | "warning" | "danger" | "indigo" | "neutral" }
+> = {
+  // Submission Statuses
+  draft: { label: "Draft", variant: "neutral" },
+  submitted: { label: "Submitted", variant: "indigo" },
+  processing: { label: "Processing", variant: "indigo" },
+  under_review: { label: "Under Review", variant: "indigo" },
+  in_review: { label: "In Review", variant: "indigo" },
+  approved: { label: "Approved", variant: "success" },
+  changes_requested: { label: "Changes Requested", variant: "warning" },
+  rejected: { label: "Rejected", variant: "danger" },
+
+  // Claim Statuses
+  supported: { label: "Supported", variant: "success" },
+  contradicted: { label: "Contradicted", variant: "danger" },
+  outdated: { label: "Outdated", variant: "warning" },
+  unverified: { label: "Unverified", variant: "neutral" },
+  needs_review: { label: "Needs Review", variant: "warning" },
+  requires_review: { label: "Requires Review", variant: "warning" },
+  unsupported: { label: "Unsupported", variant: "danger" },
+  flagged: { label: "Flagged", variant: "danger" },
+
+  // Generic
+  active: { label: "Active", variant: "success" },
+  archived: { label: "Archived", variant: "neutral" },
+};
+
+export function StatusPill({ status, className }: StatusPillProps) {
+  const config = statusMap[status] || {
+    label: status.replace(/_/g, " "),
+    variant: "default" as const,
+  };
+
+  return (
+    <Badge variant={config.variant} size="sm" className={className}>
+      <span
+        className={`w-1.5 h-1.5 rounded-full mr-1.5 ${
+          config.variant === "success"
+            ? "bg-emerald-500"
+            : config.variant === "warning"
+            ? "bg-amber-500"
+            : config.variant === "danger"
+            ? "bg-rose-500"
+            : config.variant === "indigo"
+            ? "bg-indigo-500"
+            : "bg-slate-400"
+        }`}
+      />
+      {config.label}
+    </Badge>
+  );
+}
