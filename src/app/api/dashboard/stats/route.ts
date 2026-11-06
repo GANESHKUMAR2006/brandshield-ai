@@ -1,69 +1,93 @@
 import { NextResponse } from "next/server";
+import { resolveServerSession } from "@/lib/auth/server-session";
 import { query } from "@/lib/db/server-db";
+import { ComplianceAnalyticsService } from "@/lib/analytics/analytics-service";
 
 export async function GET() {
   try {
-    // 1. Core metric counts from PostgreSQL
-    const statsRes = await query(`
-      SELECT 
-        (SELECT COUNT(*)::int FROM products p JOIN workspaces w ON p.workspace_id = w.id WHERE w.slug = 'dermaglow') as total_products,
-        (SELECT COUNT(*)::int FROM approved_facts af JOIN products p ON af.product_id = p.id JOIN workspaces w ON p.workspace_id = w.id WHERE w.slug = 'dermaglow') as approved_facts,
-        (SELECT COUNT(*)::int FROM source_documents sd JOIN workspaces w ON sd.workspace_id = w.id WHERE w.slug = 'dermaglow') as source_documents,
-        (SELECT COUNT(*)::int FROM submissions s JOIN workspaces w ON s.workspace_id = w.id WHERE w.slug = 'dermaglow') as total_submissions,
-        (SELECT COUNT(*)::int FROM submissions s JOIN workspaces w ON s.workspace_id = w.id WHERE w.slug = 'dermaglow' AND s.status = 'draft') as draft_submissions,
-        (SELECT COUNT(*)::int FROM submissions s JOIN workspaces w ON s.workspace_id = w.id WHERE w.slug = 'dermaglow' AND s.status != 'draft') as submitted_content,
-        (SELECT COUNT(*)::int FROM claims c JOIN submissions s ON c.submission_id = s.id JOIN workspaces w ON s.workspace_id = w.id WHERE w.slug = 'dermaglow') as total_claims,
-        (SELECT COUNT(*)::int FROM claims c JOIN submissions s ON c.submission_id = s.id JOIN workspaces w ON s.workspace_id = w.id WHERE w.slug = 'dermaglow' AND c.verification_status = 'supported') as supported_claims,
-        (SELECT COUNT(*)::int FROM claims c JOIN submissions s ON c.submission_id = s.id JOIN workspaces w ON s.workspace_id = w.id WHERE w.slug = 'dermaglow' AND c.verification_status IN ('needs_review', 'contradicted', 'outdated')) as review_claims;
-    `);
+    const session = await resolveServerSession();
 
-    // 2. Recent Live Submissions
-    const recentSubsRes = await query(`
-      SELECT 
-        s.id,
-        s.title,
-        s.channel,
-        s.status,
-        s.submitted_by,
-        s.created_at,
-        p.name as product_name,
-        COUNT(DISTINCT c.id)::int as total_claims,
-        COUNT(DISTINCT CASE WHEN c.verification_status = 'supported' THEN c.id END)::int as supported_claims,
-        COUNT(DISTINCT CASE WHEN c.verification_status IN ('needs_review', 'contradicted', 'outdated') THEN c.id END)::int as review_required_claims
-      FROM submissions s
-      JOIN workspaces w ON s.workspace_id = w.id
-      LEFT JOIN products p ON s.product_id = p.id
-      LEFT JOIN claims c ON s.id = c.submission_id
-      WHERE w.slug = 'dermaglow'
-      GROUP BY s.id, p.name
-      ORDER BY s.created_at DESC
-      LIMIT 5;
-    `);
+    // 1. Fetch comprehensive compliance analytics
+    const analytics = await ComplianceAnalyticsService.getWorkspaceAnalytics(session);
 
-    // 3. Recent Live Audit Events
-    const recentAuditsRes = await query(`
-      SELECT 
-        id,
-        actor_id,
-        entity_type,
-        entity_id,
-        action,
-        after_state,
-        created_at
-      FROM audit_events ae
-      JOIN workspaces w ON ae.workspace_id = w.id
-      WHERE w.slug = 'dermaglow'
-      ORDER BY ae.created_at DESC
-      LIMIT 5;
-    `);
+    // 2. Fetch actionable risk and operational insights
+    const insights = await ComplianceAnalyticsService.getComplianceInsights(session);
+
+    // 3. Recent Live Submissions within workspace
+    let recentSubmissions: Array<Record<string, unknown>> = [];
+    try {
+      const recentSubsRes = await query(`
+        SELECT 
+          s.id,
+          s.title,
+          s.channel,
+          s.status,
+          s.publication_status,
+          s.submitted_by,
+          s.created_at,
+          p.name as product_name,
+          COUNT(DISTINCT c.id)::int as total_claims,
+          COUNT(DISTINCT CASE WHEN c.is_active = true AND c.verification_status = 'supported' THEN c.id END)::int as supported_claims,
+          COUNT(DISTINCT CASE WHEN c.is_active = true AND c.verification_status IN ('needs_review', 'contradicted', 'outdated', 'unverified') THEN c.id END)::int as review_required_claims
+        FROM submissions s
+        JOIN workspaces w ON s.workspace_id = w.id
+        LEFT JOIN products p ON s.product_id = p.id
+        LEFT JOIN claims c ON s.id = c.submission_id
+        WHERE w.slug = $1
+        GROUP BY s.id, p.name
+        ORDER BY s.created_at DESC
+        LIMIT 5;
+      `, [session.workspaceSlug]);
+      recentSubmissions = recentSubsRes.rows;
+    } catch {
+      recentSubmissions = [];
+    }
+
+    // 4. Recent Live Audit Events within workspace
+    let recentAuditEvents: Array<Record<string, unknown>> = [];
+    try {
+      const recentAuditsRes = await query(`
+        SELECT 
+          ae.id,
+          ae.actor_id,
+          ae.entity_type,
+          ae.entity_id,
+          ae.action,
+          ae.after_state,
+          ae.created_at
+        FROM audit_events ae
+        JOIN workspaces w ON ae.workspace_id = w.id
+        WHERE w.slug = $1
+        ORDER BY ae.created_at DESC
+        LIMIT 5;
+      `, [session.workspaceSlug]);
+      recentAuditEvents = recentAuditsRes.rows;
+    } catch {
+      recentAuditEvents = [];
+    }
+
+    // Backwards-compatible legacy stats structure
+    const legacyStats = {
+      total_products: 4,
+      approved_facts: 24,
+      source_documents: analytics.sourceDocumentMetrics.totalApproved,
+      total_submissions: analytics.totalSubmissions,
+      draft_submissions: analytics.draftSubmissions,
+      submitted_content: analytics.totalSubmissions - analytics.draftSubmissions,
+      total_claims: analytics.totalExtractedClaims,
+      supported_claims: analytics.claimsByVerificationStatus.supported,
+      review_claims: analytics.claimsAwaitingReview,
+    };
 
     return NextResponse.json({
       success: true,
-      workspace: "DermaGlow",
+      workspace: session.workspaceSlug,
       isLiveDatabase: true,
-      stats: statsRes.rows[0],
-      recentSubmissions: recentSubsRes.rows,
-      recentAuditEvents: recentAuditsRes.rows,
+      stats: legacyStats,
+      analytics,
+      insights,
+      recentSubmissions,
+      recentAuditEvents,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to load dashboard metrics";

@@ -17,6 +17,26 @@ export type RiskLevel = "low" | "medium" | "high" | "critical";
 
 export type ReviewDecisionType = "approved" | "rejected" | "escalated" | "modified";
 
+export type ReviewStatus =
+  | "pending"
+  | "in_review"
+  | "approved"
+  | "rejected"
+  | "modified"
+  | "escalated";
+
+export type ReviewerRole = "admin" | "compliance_reviewer" | "legal_reviewer" | "viewer";
+
+export type EscalationCategory =
+  | "legal"
+  | "regulatory"
+  | "clinical"
+  | "brand_compliance"
+  | "evidence_conflict"
+  | "other";
+
+export type PublicationStatus = "ineligible" | "eligible" | "published";
+
 export interface Database {
   public: {
     Tables: {
@@ -288,6 +308,9 @@ export interface Database {
           status: string;
           submitted_by: string;
           submission_date: string;
+          publication_status: PublicationStatus;
+          publication_eligibility_details: Json;
+          last_reviewed_at: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -301,6 +324,9 @@ export interface Database {
           status?: string;
           submitted_by: string;
           submission_date?: string;
+          publication_status?: PublicationStatus;
+          publication_eligibility_details?: Json;
+          last_reviewed_at?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -314,6 +340,9 @@ export interface Database {
           status?: string;
           submitted_by?: string;
           submission_date?: string;
+          publication_status?: PublicationStatus;
+          publication_eligibility_details?: Json;
+          last_reviewed_at?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -363,6 +392,11 @@ export interface Database {
           evidence_sufficiency: string | null;
           explanation: string | null;
           suggested_correction: string | null;
+          review_status: ReviewStatus;
+          assigned_reviewer: string | null;
+          last_reviewed_at: string | null;
+          review_notes: string | null;
+          original_claim_id: string | null;
           is_active: boolean;
           created_at: string;
           updated_at: string;
@@ -385,6 +419,11 @@ export interface Database {
           evidence_sufficiency?: string | null;
           explanation?: string | null;
           suggested_correction?: string | null;
+          review_status?: ReviewStatus;
+          assigned_reviewer?: string | null;
+          last_reviewed_at?: string | null;
+          review_notes?: string | null;
+          original_claim_id?: string | null;
           is_active?: boolean;
           created_at?: string;
           updated_at?: string;
@@ -407,6 +446,11 @@ export interface Database {
           evidence_sufficiency?: string | null;
           explanation?: string | null;
           suggested_correction?: string | null;
+          review_status?: ReviewStatus;
+          assigned_reviewer?: string | null;
+          last_reviewed_at?: string | null;
+          review_notes?: string | null;
+          original_claim_id?: string | null;
           is_active?: boolean;
           created_at?: string;
           updated_at?: string;
@@ -483,6 +527,16 @@ export interface Database {
           reviewer_id: string;
           decision: ReviewDecisionType;
           comments: string | null;
+          workspace_id: string;
+          submission_id: string;
+          reviewer_role: ReviewerRole;
+          verification_run_id: string | null;
+          original_claim_text: string | null;
+          modified_claim_text: string | null;
+          escalation_category: EscalationCategory | null;
+          override_reason: string | null;
+          previous_workflow_state: string | null;
+          new_workflow_state: string;
           created_at: string;
         };
         Insert: {
@@ -491,6 +545,16 @@ export interface Database {
           reviewer_id: string;
           decision: ReviewDecisionType;
           comments?: string | null;
+          workspace_id: string;
+          submission_id: string;
+          reviewer_role?: ReviewerRole;
+          verification_run_id?: string | null;
+          original_claim_text?: string | null;
+          modified_claim_text?: string | null;
+          escalation_category?: EscalationCategory | null;
+          override_reason?: string | null;
+          previous_workflow_state?: string | null;
+          new_workflow_state?: string;
           created_at?: string;
         };
         Update: {
@@ -499,6 +563,16 @@ export interface Database {
           reviewer_id?: string;
           decision?: ReviewDecisionType;
           comments?: string | null;
+          workspace_id?: string;
+          submission_id?: string;
+          reviewer_role?: ReviewerRole;
+          verification_run_id?: string | null;
+          original_claim_text?: string | null;
+          modified_claim_text?: string | null;
+          escalation_category?: EscalationCategory | null;
+          override_reason?: string | null;
+          previous_workflow_state?: string | null;
+          new_workflow_state?: string;
           created_at?: string;
         };
       };

@@ -12,9 +12,13 @@ import { VerificationContextLoader } from "./verification-context";
 import { VerificationRouter } from "./verification-router";
 import { EvidenceSufficiencyGate } from "./evidence/evidence-sufficiency";
 import {
+  RiskLevel,
   VerificationExecutionResult,
   VerificationRunSnapshot,
 } from "./types";
+import { PolicyEngine } from "@/lib/policy/policy-engine";
+import { DEFAULT_POLICIES } from "@/lib/policy/default-policies";
+import { PolicyEvaluationResult } from "@/types";
 
 export const VERIFICATION_ENGINE_VERSION = "1.0.0";
 
@@ -43,7 +47,39 @@ export class VerificationEngine {
       finalExplanation = sufficiencyCheck.reason || finalExplanation;
     }
 
-    // 4. Build immutable evidence snapshot
+    // 4. Deterministic Policy Intelligence Evaluation (Phase 9)
+    const evidenceTypes = ruleResult.evidenceMatches.map((m) => m.evidenceType);
+    const policyEvaluation: PolicyEvaluationResult = PolicyEngine.evaluateClaim(
+      context.claim.id,
+      {
+        claimText: context.claim.claim_text,
+        claimType: context.claim.claim_type,
+        productId: context.product?.id || null,
+        channel: context.submission.channel,
+        extractedEntities: context.claim.extracted_entities,
+        evidenceTypes,
+        submissionContent: context.submissionVersion.content,
+      },
+      DEFAULT_POLICIES,
+      context.effectiveDate
+    );
+
+    // Calculate composite risk: maximum of verification rule risk and policy risk
+    const severityHierarchy: Record<RiskLevel, number> = {
+      low: 1,
+      medium: 2,
+      high: 3,
+      critical: 4,
+    };
+    let compositeRisk: RiskLevel = ruleResult.riskLevel;
+    if (
+      policyEvaluation.maxSeverity &&
+      severityHierarchy[policyEvaluation.maxSeverity] > severityHierarchy[compositeRisk]
+    ) {
+      compositeRisk = policyEvaluation.maxSeverity;
+    }
+
+    // 5. Build immutable evidence & policy snapshot
     const snapshot: VerificationRunSnapshot = {
       claim_id: context.claim.id,
       claim_text: context.claim.claim_text,
@@ -58,7 +94,7 @@ export class VerificationEngine {
       rule_id: ruleResult.ruleId,
       rule_engine_version: VERIFICATION_ENGINE_VERSION,
       verification_status: finalStatus,
-      risk_level: ruleResult.riskLevel,
+      risk_level: compositeRisk,
       evidence_sufficiency: sufficiencyCheck.sufficiency,
       explanation: finalExplanation,
       suggested_correction: ruleResult.suggestedCorrection || null,
@@ -73,9 +109,10 @@ export class VerificationEngine {
         resulting_price: p.resulting_price,
       })),
       evidence_links: ruleResult.evidenceMatches,
+      policy_evaluation: policyEvaluation,
     };
 
-    // 5. Persist run, evidence links, updated claim status, and audit log in an atomic transaction
+    // 6. Persist run, evidence links, updated claim status, policy metadata, and audit log in an atomic transaction
     const executionResult = await withTransaction(async (client) => {
       // A. Insert verification_runs record
       const runRes = await client.query<{ id: string; created_at: string }>(
@@ -85,16 +122,20 @@ export class VerificationEngine {
           verification_status,
           risk_level,
           explanation,
-          evidence_snapshot
-        ) VALUES ($1, $2, $3, $4, $5, $6)
+          evidence_snapshot,
+          policy_version_ids,
+          policy_evaluation
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         RETURNING id, created_at`,
         [
           context.claim.id,
           VERIFICATION_ENGINE_VERSION,
           finalStatus,
-          ruleResult.riskLevel,
+          compositeRisk,
           finalExplanation,
           JSON.stringify(snapshot),
+          policyEvaluation.effectivePolicyVersions.map((v) => v.versionId),
+          JSON.stringify(policyEvaluation),
         ]
       );
       const runId = runRes.rows[0].id;
@@ -122,7 +163,7 @@ export class VerificationEngine {
         );
       }
 
-      // C. Update claims table record
+      // C. Update claims table record with verification status, risk, and policy intelligence
       await client.query(
         `UPDATE claims
          SET verification_status = $1,
@@ -131,15 +172,23 @@ export class VerificationEngine {
              suggested_correction = $4,
              evidence_sufficiency = $5,
              verified_at = $6,
+             policy_compliance_status = $7,
+             mandatory_reviewer_role = $8,
+             required_evidence_types = $9,
+             triggered_policy_rules = $10,
              updated_at = now()
-         WHERE id = $7`,
+         WHERE id = $11`,
         [
           finalStatus,
-          ruleResult.riskLevel,
+          compositeRisk,
           finalExplanation,
           ruleResult.suggestedCorrection || null,
           sufficiencyCheck.sufficiency,
           verifiedAt,
+          policyEvaluation.complianceStatus,
+          policyEvaluation.mandatoryReviewerRoles[0] || null,
+          policyEvaluation.requiredEvidenceTypes,
+          JSON.stringify(policyEvaluation.triggeredRules),
           context.claim.id,
         ]
       );
@@ -154,20 +203,23 @@ export class VerificationEngine {
           action,
           after_state
         ) VALUES (
-          '00000000-0000-0000-0000-000000000001',
+          $1,
           'verification_engine',
           'claim',
-          $1,
+          $2,
           'claim_verified',
-          $2
+          $3
         )`,
         [
+          context.submission.workspace_id || "00000000-0000-0000-0000-000000000001",
           context.claim.id,
           JSON.stringify({
             run_id: runId,
             verification_status: finalStatus,
-            risk_level: ruleResult.riskLevel,
+            policy_compliance_status: policyEvaluation.complianceStatus,
+            risk_level: compositeRisk,
             evidence_sufficiency: sufficiencyCheck.sufficiency,
+            triggered_policies_count: policyEvaluation.triggeredRules.length,
           }),
         ]
       );
@@ -176,7 +228,7 @@ export class VerificationEngine {
         runId,
         claimId: context.claim.id,
         status: finalStatus,
-        riskLevel: ruleResult.riskLevel,
+        riskLevel: compositeRisk,
         explanation: finalExplanation,
         suggestedCorrection: ruleResult.suggestedCorrection || null,
         evidenceSufficiency: sufficiencyCheck.sufficiency,
@@ -184,6 +236,7 @@ export class VerificationEngine {
         evidence: ruleResult.evidenceMatches,
         snapshot,
         verifiedAt,
+        policyEvaluation,
       };
     });
 

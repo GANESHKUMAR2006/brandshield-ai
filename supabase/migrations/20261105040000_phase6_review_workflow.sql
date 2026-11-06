@@ -183,7 +183,8 @@ BEGIN
       'approved',
       'rejected',
       'changes_requested',
-      'escalated'
+      'escalated',
+      'published'
     ));
 
   -- Add publication_status

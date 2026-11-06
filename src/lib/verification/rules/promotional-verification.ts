@@ -1,3 +1,4 @@
+
 /**
  * BrandShield AI — Promotional Terms Verification Rule
  * Phase 5: Deterministic Marketing Claim Verification Engine

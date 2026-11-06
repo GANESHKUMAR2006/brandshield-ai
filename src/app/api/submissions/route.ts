@@ -1,18 +1,20 @@
 import { NextResponse } from "next/server";
 import { query, withTransaction } from "@/lib/db/server-db";
 import { z } from "zod";
+import { resolveServerSession, AuthenticationRequiredError } from "@/lib/auth/server-session";
 
 const createSubmissionSchema = z.object({
   title: z.string().min(3, "Title must be at least 3 characters").max(200),
   content: z.string().min(5, "Content must be at least 5 characters"),
   channel: z.string().min(2, "Channel must be specified"),
   productId: z.string().uuid("Invalid product ID").nullable().optional(),
-  submittedBy: z.string().min(2).default("Dr. Elena Vance"),
 });
 
 // GET /api/submissions
 export async function GET() {
   try {
+    const session = await resolveServerSession();
+
     const submissionsRes = await query(`
       SELECT 
         s.id,
@@ -38,17 +40,23 @@ export async function GET() {
       LEFT JOIN products p ON s.product_id = p.id
       LEFT JOIN submission_versions sv ON s.id = sv.submission_id
       LEFT JOIN claims c ON s.id = c.submission_id
-      WHERE w.slug = 'dermaglow'
+      WHERE w.slug = $1
       GROUP BY s.id, p.name, p.sku
       ORDER BY s.created_at DESC;
-    `);
+    `, [session.workspaceSlug]);
 
     return NextResponse.json({
       success: true,
-      workspace: "DermaGlow",
+      workspace: session.workspaceSlug,
       data: submissionsRes.rows,
     });
   } catch (error) {
+    if (error instanceof AuthenticationRequiredError) {
+      return NextResponse.json(
+        { success: false, error: "Authentication required", details: error.message },
+        { status: 401 }
+      );
+    }
     const message = error instanceof Error ? error.message : "Failed to retrieve submissions";
     return NextResponse.json(
       { success: false, error: "Database error retrieving submissions", details: message },
@@ -60,6 +68,8 @@ export async function GET() {
 // POST /api/submissions
 export async function POST(request: Request) {
   try {
+    const session = await resolveServerSession();
+
     const body = await request.json();
     const validated = createSubmissionSchema.safeParse(body);
 
@@ -74,24 +84,26 @@ export async function POST(request: Request) {
       );
     }
 
-    const { title, content, channel, productId, submittedBy } = validated.data;
+    const { title, content, channel, productId } = validated.data;
+    const authorName = session.userName;
 
     const result = await withTransaction(async (client) => {
-      // 1. Resolve DermaGlow workspace ID
+      // 1. Resolve workspace ID from authenticated session
       const wsRes = await client.query(
-        "SELECT id FROM workspaces WHERE slug = 'dermaglow' LIMIT 1;"
+        "SELECT id FROM workspaces WHERE slug = $1 LIMIT 1;",
+        [session.workspaceSlug]
       );
       if (wsRes.rows.length === 0) {
-        throw new Error("Workspace 'dermaglow' not found.");
+        throw new Error(`Workspace "${session.workspaceSlug}" not found.`);
       }
       const workspaceId = wsRes.rows[0].id;
 
-      // 2. Insert master submission row
+      // 2. Insert master submission row with matched parameters
       const subRes = await client.query(
         `INSERT INTO submissions (workspace_id, product_id, title, content, channel, status, submitted_by)
-         VALUES ($1, $2, $3, $4, 'draft', $5)
+         VALUES ($1, $2, $3, $4, $5, 'draft', $6)
          RETURNING *;`,
-        [workspaceId, productId || null, title, content, channel, submittedBy]
+        [workspaceId, productId || null, title, content, channel, authorName]
       );
       const newSubmission = subRes.rows[0];
 
@@ -100,7 +112,7 @@ export async function POST(request: Request) {
         `INSERT INTO submission_versions (submission_id, version_number, content, created_by)
          VALUES ($1, 1, $2, $3)
          RETURNING *;`,
-        [newSubmission.id, content, submittedBy]
+        [newSubmission.id, content, authorName]
       );
       const initialVersion = verRes.rows[0];
 
@@ -110,7 +122,7 @@ export async function POST(request: Request) {
          VALUES ($1, $2, 'submission', $3, 'submission_created', $4);`,
         [
           workspaceId,
-          submittedBy,
+          authorName,
           newSubmission.id,
           JSON.stringify({
             title,
@@ -141,6 +153,12 @@ export async function POST(request: Request) {
       { status: 201 }
     );
   } catch (error) {
+    if (error instanceof AuthenticationRequiredError) {
+      return NextResponse.json(
+        { success: false, error: "Authentication required", details: error.message },
+        { status: 401 }
+      );
+    }
     const message = error instanceof Error ? error.message : "Failed to create submission";
     return NextResponse.json(
       { success: false, error: "Database transaction failed", details: message },

@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { query } from "@/lib/db/server-db";
+import { resolveServerSession, AuthenticationRequiredError } from "@/lib/auth/server-session";
 
 export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const session = await resolveServerSession();
     const { id } = await params;
 
     const claimRes = await query(
@@ -27,6 +29,11 @@ export async function GET(
         c.evidence_sufficiency,
         c.explanation,
         c.suggested_correction,
+        c.review_status,
+        c.assigned_reviewer,
+        c.last_reviewed_at,
+        c.review_notes,
+        c.original_claim_id,
         c.is_active,
         c.created_at,
         c.updated_at,
@@ -46,8 +53,8 @@ export async function GET(
       LEFT JOIN products p ON c.product_id = p.id
       LEFT JOIN submission_versions sv ON c.submission_version_id = sv.id
       LEFT JOIN extraction_runs er ON c.extraction_run_id = er.id
-      WHERE c.id = $1 AND w.slug = 'dermaglow'`,
-      [id]
+      WHERE c.id = $1 AND w.slug = $2`,
+      [id, session.workspaceSlug]
     );
 
     if (claimRes.rows.length === 0) {
@@ -66,13 +73,17 @@ export async function GET(
         ce.relevance_score,
         ce.evidence_type,
         af.fact_key,
-        sd.title as document_title
+        sd.title as document_title,
+        dv.version_number,
+        dv.approval_status as version_approval_status,
+        dv.valid_until,
+        dv.superseded_at
        FROM claim_evidence ce
        LEFT JOIN approved_facts af ON ce.approved_fact_id = af.id
        LEFT JOIN document_versions dv ON ce.document_version_id = dv.id
        LEFT JOIN source_documents sd ON dv.source_document_id = sd.id
        WHERE ce.claim_id = $1
-       ORDER BY ce.created_at DESC`,
+       ORDER BY ce.relevance_score DESC, ce.created_at DESC`,
       [id]
     );
 
@@ -85,17 +96,32 @@ export async function GET(
       [id]
     );
 
+    // Fetch review decisions history
+    const reviewRes = await query(
+      `SELECT id, reviewer_id, reviewer_role, decision, comments,
+              original_claim_text, modified_claim_text, escalation_category,
+              override_reason, previous_workflow_state, new_workflow_state, created_at
+       FROM review_decisions
+       WHERE claim_id = $1
+       ORDER BY created_at DESC`,
+      [id]
+    );
+
     return NextResponse.json(
       {
         data: {
           ...claim,
           evidence: evidenceRes.rows,
           verification_history: runsRes.rows,
+          review_history: reviewRes.rows,
         },
       },
       { status: 200 }
     );
   } catch (err: unknown) {
+    if (err instanceof AuthenticationRequiredError) {
+      return NextResponse.json({ error: "Authentication required", details: err.message }, { status: 401 });
+    }
     const message = err instanceof Error ? err.message : "Failed to fetch claim";
     return NextResponse.json({ error: message }, { status: 500 });
   }

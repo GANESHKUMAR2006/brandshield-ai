@@ -17,9 +17,20 @@ const statusMap: Record<
   processing: { label: "Processing", variant: "indigo" },
   under_review: { label: "Under Review", variant: "indigo" },
   in_review: { label: "In Review", variant: "indigo" },
+  pending_review: { label: "Pending Review", variant: "warning" },
   approved: { label: "Approved", variant: "success" },
   changes_requested: { label: "Changes Requested", variant: "warning" },
+  escalated: { label: "Escalated", variant: "danger" },
   rejected: { label: "Rejected", variant: "danger" },
+  published: { label: "Published", variant: "success" },
+
+  // Publication Statuses
+  ineligible: { label: "Ineligible for Pub", variant: "neutral" },
+  eligible: { label: "Publication Ready", variant: "success" },
+
+  // Human Review Workflow Statuses
+  pending: { label: "Pending Review", variant: "neutral" },
+  modified: { label: "Modified", variant: "indigo" },
 
   // Claim Statuses
   supported: { label: "Supported", variant: "success" },

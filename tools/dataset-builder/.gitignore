@@ -1,0 +1,8 @@
+# Standalone Dataset Builder Output
+# Ignore all generated dataset files and artifacts
+output/
+data/
+*.jsonl
+manifest.json
+quality-report.md
+

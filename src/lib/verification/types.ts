@@ -106,6 +106,7 @@ export interface VerificationContext {
   };
   submission: {
     id: string;
+    workspace_id?: string;
     title: string;
     channel: string;
     product_id: string | null;
@@ -154,6 +155,7 @@ export interface VerificationRunSnapshot {
     resulting_price: number;
   }>;
   evidence_links: EvidenceMatch[];
+  policy_evaluation?: unknown;
 }
 
 export interface VerificationExecutionResult {
@@ -168,4 +170,5 @@ export interface VerificationExecutionResult {
   evidence: EvidenceMatch[];
   snapshot: VerificationRunSnapshot;
   verifiedAt: string;
+  policyEvaluation?: import("@/types").PolicyEvaluationResult;
 }

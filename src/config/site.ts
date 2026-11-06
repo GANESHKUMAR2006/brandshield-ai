@@ -66,6 +66,13 @@ export const NAVIGATION_ITEMS: readonly NavItem[] = [
     description: "Tamper-evident governance trail and compliance logs",
   },
   {
+    name: "Policies",
+    href: "/policies",
+    icon: "ShieldAlert",
+    badge: "7 Active",
+    description: "Configurable compliance policies, deterministic rules & simulation",
+  },
+  {
     name: "Settings",
     href: "/settings",
     icon: "Settings",

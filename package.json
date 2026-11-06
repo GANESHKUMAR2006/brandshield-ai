@@ -11,6 +11,10 @@
     "test:phase3": "node --env-file=.env.local scripts/phase3-comprehensive-test.js",
     "test:phase4": "node --env-file=.env.local scripts/phase4-comprehensive-test.js",
     "test:phase5": "npx tsx --env-file=.env.local scripts/phase5-comprehensive-test.ts",
+    "test:phase6:unit": "npx tsx scripts/phase6-unit-test.ts",
+    "test:phase7:unit": "npx tsx scripts/phase7-unit-test.ts",
+    "test:phase8:unit": "npx tsx scripts/phase8-unit-test.ts",
+    "test:phase9:unit": "npx tsx scripts/phase9-unit-test.ts",
     "test:verification": "npx tsx --env-file=.env.local scripts/phase5-comprehensive-test.ts",
     "db:seed": "node --env-file=.env.local scripts/migrate-and-seed.js"
   },

@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { query, withTransaction } from "@/lib/db/server-db";
 import { z } from "zod";
+import { resolveServerSession, AuthenticationRequiredError } from "@/lib/auth/server-session";
 
+// Status changes via arbitrary PATCH are strictly limited to pre-approval workflows.
+// Publication and final approval are gated exclusively through dedicated compliance workflows.
 const updateSubmissionSchema = z.object({
   title: z.string().min(3).max(200).optional(),
   content: z.string().min(5).optional(), // Content modification creates a new version!
@@ -13,13 +16,11 @@ const updateSubmissionSchema = z.object({
       "processing",
       "under_review",
       "in_review",
-      "approved",
-      "rejected",
+      "pending_review",
       "changes_requested",
     ])
     .optional(),
   productId: z.string().uuid().nullable().optional(),
-  actor: z.string().default("Dr. Elena Vance"),
 });
 
 // GET /api/submissions/[id]
@@ -28,9 +29,10 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const session = await resolveServerSession();
     const { id } = await params;
 
-    // 1. Fetch submission with product details
+    // 1. Fetch submission with product details and workspace tenant isolation
     const subRes = await query(
       `SELECT 
         s.id,
@@ -44,13 +46,16 @@ export async function GET(
         s.status,
         s.submitted_by,
         s.submission_date,
+        s.publication_status,
+        s.publication_eligibility_details,
+        s.last_reviewed_at,
         s.created_at,
         s.updated_at
        FROM submissions s
        JOIN workspaces w ON s.workspace_id = w.id
        LEFT JOIN products p ON s.product_id = p.id
-       WHERE s.id = $1 AND w.slug = 'dermaglow';`,
-      [id]
+       WHERE s.id = $1 AND w.slug = $2;`,
+      [id, session.workspaceSlug]
     );
 
     if (subRes.rows.length === 0) {
@@ -91,6 +96,11 @@ export async function GET(
         c.evidence_sufficiency,
         c.explanation,
         c.suggested_correction,
+        c.review_status,
+        c.assigned_reviewer,
+        c.last_reviewed_at,
+        c.review_notes,
+        c.original_claim_id,
         c.created_at
        FROM claims c
        WHERE c.submission_id = $1 AND c.is_active = true
@@ -109,6 +119,12 @@ export async function GET(
       },
     });
   } catch (error) {
+    if (error instanceof AuthenticationRequiredError) {
+      return NextResponse.json(
+        { success: false, error: "Authentication required", details: error.message },
+        { status: 401 }
+      );
+    }
     const message = error instanceof Error ? error.message : "Failed to retrieve submission";
     return NextResponse.json(
       { success: false, error: "Database error retrieving submission", details: message },
@@ -123,6 +139,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const session = await resolveServerSession();
     const { id } = await params;
     const body = await request.json();
     const validated = updateSubmissionSchema.safeParse(body);
@@ -138,7 +155,8 @@ export async function PATCH(
       );
     }
 
-    const { title, content, channel, status, productId, actor } = validated.data;
+    const { title, content, channel, status, productId } = validated.data;
+    const actor = session.userName;
 
     const result = await withTransaction(async (client) => {
       // 1. Fetch current submission state
@@ -146,9 +164,9 @@ export async function PATCH(
         `SELECT s.*, w.slug
          FROM submissions s
          JOIN workspaces w ON s.workspace_id = w.id
-         WHERE s.id = $1 AND w.slug = 'dermaglow'
+         WHERE s.id = $1 AND w.slug = $2
          FOR UPDATE;`,
-        [id]
+        [id, session.workspaceSlug]
       );
 
       if (currentRes.rows.length === 0) {
@@ -208,7 +226,11 @@ export async function PATCH(
           current.workspace_id,
           actor,
           id,
-          newVersionCreated ? "submission_content_revised" : "submission_metadata_updated",
+          updatedStatus === "submitted" && current.status !== "submitted"
+            ? "submission_submitted"
+            : newVersionCreated
+            ? "submission_content_revised"
+            : "submission_metadata_updated",
           JSON.stringify({
             title: current.title,
             status: current.status,

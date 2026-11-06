@@ -143,6 +143,7 @@ export class VerificationContextLoader {
       },
       submission: {
         id: row.submission_id,
+        workspace_id: row.workspace_id,
         title: row.submission_title,
         channel: row.submission_channel,
         product_id: row.submission_product_id,

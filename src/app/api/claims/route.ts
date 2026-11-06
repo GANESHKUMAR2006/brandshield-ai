@@ -1,13 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { query } from "@/lib/db/server-db";
+import { resolveServerSession, AuthenticationRequiredError } from "@/lib/auth/server-session";
 
 export async function GET(request: NextRequest) {
   try {
+    const session = await resolveServerSession();
+
     const { searchParams } = new URL(request.url);
     const submissionId = searchParams.get("submissionId");
     const claimType = searchParams.get("claimType");
     const status = searchParams.get("status");
     const riskLevel = searchParams.get("riskLevel");
+    const reviewStatus = searchParams.get("reviewStatus");
     const productId = searchParams.get("productId");
     const search = searchParams.get("search");
     const includeInactive = searchParams.get("includeInactive") === "true";
@@ -31,6 +35,11 @@ export async function GET(request: NextRequest) {
         c.evidence_sufficiency,
         c.explanation,
         c.suggested_correction,
+        c.review_status,
+        c.assigned_reviewer,
+        c.last_reviewed_at,
+        c.review_notes,
+        c.original_claim_id,
         c.is_active,
         c.created_at,
         c.updated_at,
@@ -47,11 +56,11 @@ export async function GET(request: NextRequest) {
       LEFT JOIN products p ON c.product_id = p.id
       LEFT JOIN submission_versions sv ON c.submission_version_id = sv.id
       LEFT JOIN extraction_runs er ON c.extraction_run_id = er.id
-      WHERE w.slug = 'dermaglow'
+      WHERE w.slug = $1
     `;
 
-    const params: unknown[] = [];
-    let paramIndex = 1;
+    const params: unknown[] = [session.workspaceSlug];
+    let paramIndex = 2;
 
     if (!includeInactive) {
       sql += ` AND c.is_active = true`;
@@ -77,6 +86,11 @@ export async function GET(request: NextRequest) {
       params.push(riskLevel);
     }
 
+    if (reviewStatus && reviewStatus !== "all") {
+      sql += ` AND c.review_status = $${paramIndex++}`;
+      params.push(reviewStatus);
+    }
+
     if (productId) {
       sql += ` AND c.product_id = $${paramIndex++}`;
       params.push(productId);
@@ -94,6 +108,9 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ data: result.rows }, { status: 200 });
   } catch (err: unknown) {
+    if (err instanceof AuthenticationRequiredError) {
+      return NextResponse.json({ error: "Authentication required", details: err.message }, { status: 401 });
+    }
     const message = err instanceof Error ? err.message : "Failed to fetch claims";
     return NextResponse.json({ error: message }, { status: 500 });
   }

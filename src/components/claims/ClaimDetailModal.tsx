@@ -1,12 +1,13 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { LiveClaimRecord, verifyClaim, fetchClaimDetail } from "@/lib/api-client";
+import { LiveClaimRecord, verifyClaim, fetchClaimDetail, submitReviewDecision, discoverClaimEvidence } from "@/lib/api-client";
 import { Button } from "@/components/ui/Button";
 import { StatusPill } from "@/components/ui/StatusPill";
 import { Badge } from "@/components/ui/Badge";
 import { CloseIcon, SparklesIcon, CheckCircleIcon, AlertCircleIcon } from "@/components/ui/Icons";
 import { formatPercent, formatDateTime } from "@/lib/utils/formatters";
+import { EscalationCategory } from "@/types";
 
 interface ClaimDetailModalProps {
   claim: LiveClaimRecord | null;
@@ -45,8 +46,17 @@ function ClaimDetailModalInner({
 }) {
   const [claim, setClaim] = useState<LiveClaimRecord>(initialClaim);
   const [isVerifying, setIsVerifying] = useState(false);
+  const [isSubmittingReview, setIsSubmittingReview] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+
+  // Review Form States
+  const [showReviewForm, setShowReviewForm] = useState(false);
+  const [reviewDecision, setReviewDecision] = useState<"approved" | "rejected" | "escalated" | "modified">("approved");
+  const [reviewComments, setReviewComments] = useState("");
+  const [overrideReason, setOverrideReason] = useState("");
+  const [escalationCategory, setEscalationCategory] = useState<EscalationCategory>("regulatory");
+  const [modifiedText, setModifiedText] = useState(claim.suggested_correction || claim.claim_text);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -84,6 +94,59 @@ function ClaimDetailModalInner({
     }
   };
 
+  const [isRetrievingEvidence, setIsRetrievingEvidence] = useState(false);
+
+  const handleRetrieveEvidence = async () => {
+    setIsRetrievingEvidence(true);
+    setError(null);
+    setSuccessMsg(null);
+    try {
+      const res = await discoverClaimEvidence(claim.id);
+      setSuccessMsg(res.message || "Evidence retrieved successfully.");
+      const fresh = await fetchClaimDetail(claim.id);
+      setClaim(fresh);
+      if (onVerified) onVerified();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Evidence discovery failed");
+    } finally {
+      setIsRetrievingEvidence(false);
+    }
+  };
+
+  const handleSubmitReview = async () => {
+    setIsSubmittingReview(true);
+    setError(null);
+    setSuccessMsg(null);
+    try {
+      if (
+        reviewDecision === "approved" &&
+        (claim.verification_status === "contradicted" || claim.risk_level === "high" || claim.risk_level === "critical") &&
+        (!overrideReason.trim() || overrideReason.trim().length < 10)
+      ) {
+        throw new Error("A documented override reason of at least 10 characters is mandatory for high-risk or contradicted assertions.");
+      }
+
+      await submitReviewDecision({
+        claimId: claim.id,
+        decision: reviewDecision,
+        comments: reviewComments || undefined,
+        overrideReason: overrideReason || undefined,
+        escalationCategory: reviewDecision === "escalated" ? escalationCategory : undefined,
+        modifiedClaimText: reviewDecision === "modified" ? modifiedText : undefined,
+      });
+
+      setSuccessMsg(`Review decision "${reviewDecision}" recorded successfully.`);
+      setShowReviewForm(false);
+      const fresh = await fetchClaimDetail(claim.id);
+      setClaim(fresh);
+      if (onVerified) onVerified();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to record review decision");
+    } finally {
+      setIsSubmittingReview(false);
+    }
+  };
+
   // Highlight span in submission content if available
   const content = claim.version_content || "";
   const start = claim.text_start ?? -1;
@@ -117,6 +180,11 @@ function ClaimDetailModalInner({
                 {claim.claim_type.replace(/_/g, " ")}
               </span>
               <StatusPill status={claim.verification_status} />
+              <span className="text-slate-300">·</span>
+              <span className="text-xs font-semibold text-slate-600 flex items-center gap-1">
+                <span className="text-slate-400 text-[10px] uppercase font-medium">Review:</span>
+                <StatusPill status={claim.review_status || "pending"} />
+              </span>
               {claim.risk_level && (
                 <Badge variant={riskColorMap[claim.risk_level] || "default"} size="sm">
                   {claim.risk_level.toUpperCase()} RISK
@@ -212,6 +280,173 @@ function ClaimDetailModalInner({
             )}
           </div>
 
+          {/* Human Review & Governance Section */}
+          <div className="p-4 rounded-xl border border-slate-200 bg-white space-y-3">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-slate-900 text-xs">Human Compliance Review</span>
+                <StatusPill status={claim.review_status || "pending"} />
+              </div>
+
+              <Button
+                variant={showReviewForm ? "outline" : "primary"}
+                size="sm"
+                onClick={() => setShowReviewForm(!showReviewForm)}
+              >
+                {showReviewForm ? "Cancel Decision" : "Submit Review Decision"}
+              </Button>
+            </div>
+
+            {/* Review Status Metadata */}
+            <div className="grid grid-cols-2 gap-2 text-[11px] p-2.5 bg-slate-50 rounded-lg border border-slate-200">
+              <div>
+                <span className="text-slate-400">Assigned Reviewer:</span>{" "}
+                <strong className="text-slate-700">{claim.assigned_reviewer || "Unassigned"}</strong>
+              </div>
+              <div>
+                <span className="text-slate-400">Last Reviewed:</span>{" "}
+                <span>{claim.last_reviewed_at ? formatDateTime(claim.last_reviewed_at) : "Pending"}</span>
+              </div>
+              {claim.original_claim_id && (
+                <div className="col-span-2 text-indigo-700 font-mono text-[10px]">
+                  <span>Lineage Predecessor ID: {claim.original_claim_id}</span>
+                </div>
+              )}
+              {claim.review_notes && (
+                <div className="col-span-2 text-slate-600">
+                  <span className="text-slate-400">Notes:</span> {claim.review_notes}
+                </div>
+              )}
+            </div>
+
+            {/* Interactive Review Decision Form */}
+            {showReviewForm && (
+              <div className="p-3 bg-slate-50/80 rounded-xl border border-indigo-200 space-y-3">
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold text-slate-700 text-xs">Action:</span>
+                  {(["approved", "rejected", "escalated", "modified"] as const).map((dec) => (
+                    <button
+                      key={dec}
+                      type="button"
+                      onClick={() => setReviewDecision(dec)}
+                      className={`px-2.5 py-1 rounded text-xs font-medium capitalize cursor-pointer transition-colors ${
+                        reviewDecision === dec
+                          ? "bg-indigo-600 text-white"
+                          : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-100"
+                      }`}
+                    >
+                      {dec}
+                    </button>
+                  ))}
+                </div>
+
+                {reviewDecision === "approved" &&
+                  (claim.verification_status === "contradicted" || claim.risk_level === "high" || claim.risk_level === "critical") && (
+                    <div>
+                      <label className="text-[11px] font-semibold text-rose-900 block mb-1">
+                        Mandatory Policy Override Reason (Min 10 Characters):
+                      </label>
+                      <textarea
+                        rows={2}
+                        value={overrideReason}
+                        onChange={(e) => setOverrideReason(e.target.value)}
+                        placeholder="State regulatory justification or grandfather clause exception..."
+                        className="w-full p-2 rounded-lg border border-amber-300 bg-amber-50/40 text-xs focus:outline-indigo-500"
+                      />
+                    </div>
+                  )}
+
+                {reviewDecision === "modified" && (
+                  <div>
+                    <label className="text-[11px] font-semibold text-slate-700 block mb-1">
+                      Revised Defensible Claim Phrasing:
+                    </label>
+                    <textarea
+                      rows={2}
+                      value={modifiedText}
+                      onChange={(e) => setModifiedText(e.target.value)}
+                      placeholder="Revised phrasing..."
+                      className="w-full p-2 rounded-lg border border-slate-300 text-xs focus:outline-indigo-500 font-medium"
+                    />
+                  </div>
+                )}
+
+                {reviewDecision === "escalated" && (
+                  <div>
+                    <label className="text-[11px] font-semibold text-slate-700 block mb-1">
+                      Escalation Category:
+                    </label>
+                    <select
+                      value={escalationCategory}
+                      onChange={(e) => setEscalationCategory(e.target.value as EscalationCategory)}
+                      className="w-full p-1.5 rounded-lg border border-slate-300 text-xs capitalize"
+                    >
+                      <option value="regulatory">Regulatory & FDA Compliance</option>
+                      <option value="legal">Legal & IP Counsel</option>
+                      <option value="clinical">Clinical Research & Medical Affairs</option>
+                      <option value="brand_compliance">Brand Governance</option>
+                      <option value="evidence_conflict">Conflicting Evidence Adjudication</option>
+                      <option value="other">Other Specialized Review</option>
+                    </select>
+                  </div>
+                )}
+
+                <div>
+                  <label className="text-[11px] font-semibold text-slate-700 block mb-1">
+                    Reviewer Commentary:
+                  </label>
+                  <input
+                    type="text"
+                    value={reviewComments}
+                    onChange={(e) => setReviewComments(e.target.value)}
+                    placeholder="Optional compliance comment..."
+                    className="w-full p-1.5 rounded-lg border border-slate-200 text-xs focus:outline-indigo-500"
+                  />
+                </div>
+
+                <div className="flex justify-end gap-2 pt-1">
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={handleSubmitReview}
+                    isLoading={isSubmittingReview}
+                  >
+                    Confirm Review Sign-Off
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* Decision History */}
+            {claim.review_history && claim.review_history.length > 0 && (
+              <div className="pt-2 border-t border-slate-100">
+                <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">
+                  Governance Decision Audit Trail ({claim.review_history.length})
+                </div>
+                <div className="space-y-2">
+                  {claim.review_history.map((dec) => (
+                    <div key={dec.id} className="p-2.5 rounded-lg bg-slate-50 border border-slate-200 text-[11px]">
+                      <div className="flex items-center justify-between mb-1">
+                        <div className="flex items-center gap-1.5">
+                          <StatusPill status={dec.decision} />
+                          <span className="font-semibold text-slate-700">By {dec.reviewer_id}</span>
+                          <span className="text-slate-400 text-[10px]">({dec.reviewer_role})</span>
+                        </div>
+                        <span className="text-slate-400">{formatDateTime(dec.created_at)}</span>
+                      </div>
+                      {dec.comments && <p className="text-slate-600 mt-1">{dec.comments}</p>}
+                      {dec.override_reason && (
+                        <p className="text-amber-800 bg-amber-50 p-1.5 rounded border border-amber-200 mt-1 font-sans">
+                          <strong>Override Policy:</strong> {dec.override_reason}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* Context Span Highlighter if content available */}
           {content && (
             <div>
@@ -286,25 +521,97 @@ function ClaimDetailModalInner({
             </div>
           )}
 
-          {/* Linked Evidence Dossiers & Approved Facts */}
-          {claim.evidence && claim.evidence.length > 0 && (
-            <div>
-              <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block mb-1.5">
-                Attached Evidence References ({claim.evidence.length})
+          {/* Phase 7: Evidence Intelligence Dossiers & Approved Facts */}
+          <div>
+            <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+              <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">
+                Evidence Intelligence Dossier ({claim.evidence?.length || 0})
               </label>
-              <div className="space-y-2">
-                {claim.evidence.map((ev) => (
-                  <div key={ev.id} className="p-3 rounded-lg border border-slate-200 bg-slate-50/70 text-xs">
-                    <div className="flex items-center justify-between text-[10px] font-semibold text-indigo-700 uppercase mb-1">
-                      <span>{ev.evidence_type.replace(/_/g, " ")}</span>
-                      <span>Score: {formatPercent(ev.relevance_score)}</span>
-                    </div>
-                    <p className="text-slate-800 leading-relaxed font-sans">{ev.evidence_excerpt}</p>
-                  </div>
-                ))}
-              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleRetrieveEvidence}
+                isLoading={isRetrievingEvidence}
+              >
+                {isRetrievingEvidence ? "Retrieving..." : "Discover Evidence (RAG)"}
+              </Button>
             </div>
-          )}
+
+            {claim.evidence && claim.evidence.length > 0 ? (
+              <div className="space-y-3">
+                {claim.evidence.map((ev) => {
+                  const isContradiction = ev.stance === "contradicting" || ev.evidence_type.includes("contradiction");
+                  const isSupporting = ev.stance === "supporting" || ev.relevance_score >= 0.8;
+                  const isSuperseded = Boolean(ev.superseded_at);
+
+                  return (
+                    <div
+                      key={ev.id}
+                      className={`p-3.5 rounded-xl border text-xs transition-all ${
+                        isContradiction
+                          ? "bg-rose-50/50 border-rose-200"
+                          : isSupporting
+                          ? "bg-emerald-50/40 border-emerald-200"
+                          : "bg-slate-50/80 border-slate-200"
+                      }`}
+                    >
+                      {/* Top Bar: Source Doc, Version & Relevance Score */}
+                      <div className="flex items-center justify-between flex-wrap gap-1.5 mb-2">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="font-bold text-slate-900 text-xs">
+                            {ev.document_title || ev.fact_key || "Approved Clinical Dossier"}
+                          </span>
+                          {ev.version_number && (
+                            <span className="text-[10px] font-mono bg-white px-1.5 py-0.5 rounded border border-slate-200 text-slate-600 font-semibold">
+                              v{ev.version_number}
+                            </span>
+                          )}
+                          <span className="text-[10px] uppercase font-semibold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100">
+                            {ev.evidence_type.replace(/_/g, " ")}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-1.5">
+                          {isSuperseded ? (
+                            <Badge variant="danger" size="sm">SUPERSEDED</Badge>
+                          ) : (
+                            <Badge variant="success" size="sm">VALID SOURCE</Badge>
+                          )}
+                          <span className="font-mono text-[11px] font-bold text-slate-700 bg-white px-2 py-0.5 rounded border border-slate-200">
+                            Relevance: {formatPercent(ev.relevance_score)}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Excerpt Body */}
+                      <blockquote className="p-2.5 bg-white/90 rounded-lg border border-slate-200/80 text-slate-800 leading-relaxed font-sans mb-2 text-xs">
+                        &ldquo;{ev.evidence_excerpt}&rdquo;
+                      </blockquote>
+
+                      {/* Footer: Provenance & Retrieval Rationale */}
+                      <div className="flex items-center justify-between text-[11px] text-slate-500 flex-wrap gap-1">
+                        <div className="flex items-center gap-2">
+                          {ev.page_number && (
+                            <span>Page: <strong className="text-slate-700">{ev.page_number}</strong></span>
+                          )}
+                          {ev.section_reference && (
+                            <span>Section: <strong className="text-slate-700">{ev.section_reference}</strong></span>
+                          )}
+                        </div>
+                        <div className="italic text-slate-400 text-[10px]">
+                          {ev.retrieval_rationale || "Retrieved via pgvector hybrid semantic and lexical similarity"}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="p-4 rounded-xl border border-dashed border-slate-200 bg-slate-50/50 text-center text-slate-500 text-xs">
+                No evidence passages linked yet. Click &ldquo;Discover Evidence (RAG)&rdquo; to match approved clinical documents.
+              </div>
+            )}
+          </div>
 
           {/* Provenance & LLM Run Information */}
           <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 space-y-2">

@@ -8,6 +8,7 @@ import {
   extractClaims,
   verifySubmissionClaims,
   verifyClaim,
+  publishSubmission,
 } from "@/lib/api-client";
 import { Button } from "@/components/ui/Button";
 import { StatusPill } from "@/components/ui/StatusPill";
@@ -38,6 +39,7 @@ export function SubmissionDetailModal({
   const [isSaving, setIsSaving] = useState(false);
   const [isExtracting, setIsExtracting] = useState(false);
   const [isVerifyingAll, setIsVerifyingAll] = useState(false);
+  const [isPublishing, setIsPublishing] = useState(false);
   const [verifyingClaimId, setVerifyingClaimId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
@@ -106,6 +108,23 @@ export function SubmissionDetailModal({
       setError(err instanceof Error ? err.message : "Claim verification failed");
     } finally {
       setVerifyingClaimId(null);
+    }
+  };
+
+  const handlePublishCampaign = async () => {
+    if (!details) return;
+    setIsPublishing(true);
+    setError(null);
+    setSuccessMsg(null);
+    try {
+      const res = await publishSubmission(details.id);
+      setSuccessMsg(`Campaign "${res.title}" successfully approved and published!`);
+      await loadDetails(details.id);
+      onUpdated();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Campaign publication failed");
+    } finally {
+      setIsPublishing(false);
     }
   };
 
@@ -265,6 +284,47 @@ export function SubmissionDetailModal({
           <div className="p-3 mx-5 mt-4 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center gap-2">
             <CheckCircleIcon className="w-4 h-4 text-emerald-600 shrink-0" />
             <span>{successMsg}</span>
+          </div>
+        )}
+
+        {/* Publication Gate Banner */}
+        {details && (
+          <div className="mx-5 mt-4 p-3.5 rounded-xl border border-slate-200 bg-slate-50/70 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-xs">
+            <div className="flex items-center gap-3">
+              <div className="flex flex-col gap-0.5">
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-slate-800">Publication Gate:</span>
+                  <StatusPill status={details.publication_status || "ineligible"} />
+                  {details.status === "published" && (
+                    <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-semibold text-[10px]">
+                      LIVE & PUBLISHED
+                    </span>
+                  )}
+                </div>
+                <span className="text-[11px] text-slate-500">
+                  {details.claims.length === 0
+                    ? "Ineligible: No claims extracted from content yet."
+                    : `${details.claims.filter((c) => (c as unknown as { review_status?: string }).review_status === "approved").length} of ${details.claims.length} claims approved by compliance.`}
+                </span>
+              </div>
+            </div>
+
+            {details.status !== "published" && (
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={handlePublishCampaign}
+                isLoading={isPublishing}
+                disabled={details.publication_status !== "eligible"}
+                className={
+                  details.publication_status === "eligible"
+                    ? "bg-emerald-600 hover:bg-emerald-700 text-white"
+                    : "opacity-60 cursor-not-allowed"
+                }
+              >
+                Publish Campaign
+              </Button>
+            )}
           </div>
         )}
 
