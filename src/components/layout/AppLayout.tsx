@@ -4,7 +4,6 @@ import React, { useState } from "react";
 import { Sidebar } from "./Sidebar";
 import { TopNav } from "./TopNav";
 import { MobileNav } from "./MobileNav";
-import { GuidedDemoBanner } from "@/components/demo/GuidedDemoBanner";
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -15,7 +14,7 @@ export function AppLayout({ children }: AppLayoutProps) {
 
   return (
     <div className="relative flex h-screen overflow-hidden bg-[#090D16] text-slate-100">
-      {/* Ambient background glows matching Figma aesthetic */}
+      {/* Ambient background glows */}
       <div
         className="absolute -top-32 left-1/4 w-[500px] h-[500px] bg-violet-600/10 rounded-full blur-[140px] pointer-events-none"
         aria-hidden="true"
@@ -37,9 +36,6 @@ export function AppLayout({ children }: AppLayoutProps) {
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden relative z-10">
         {/* Top Header */}
         <TopNav onOpenMobileMenu={() => setMobileMenuOpen(true)} />
-
-        {/* Interactive Guided Demo Mode Banner */}
-        <GuidedDemoBanner />
 
         {/* Scrollable Page Body */}
         <main className="flex-1 overflow-y-auto px-4 py-6 sm:px-8 sm:py-8">

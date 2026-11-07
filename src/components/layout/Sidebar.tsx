@@ -152,14 +152,14 @@ export function Sidebar({ onNavigate, className }: SidebarProps) {
       <div className="p-3 border-t border-slate-800/80 bg-slate-950/40">
         <div className="flex items-center justify-between text-[11px]">
           <span className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_#34d399] animate-pulse" />
+            <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_#34d399]" />
             <span className="font-semibold text-slate-200">v{SITE_CONFIG.version}</span>
             <span className="text-slate-500">·</span>
             <span className="text-emerald-400 font-medium">Deterministic</span>
           </span>
-          <span className="flex items-center gap-1 text-[10px] text-violet-400 font-medium bg-violet-950/50 border border-violet-800/40 px-1.5 py-0.5 rounded">
+          <span className="flex items-center gap-1 text-[10px] text-emerald-400 font-medium bg-emerald-950/50 border border-emerald-800/40 px-1.5 py-0.5 rounded">
             <Sparkles className="w-2.5 h-2.5" />
-            Ollama
+            Active
           </span>
         </div>
       </div>

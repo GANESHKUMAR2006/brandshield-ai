@@ -13,8 +13,6 @@ import {
 } from "@/lib/api-client";
 import { CreateSubmissionModal } from "@/components/submissions/CreateSubmissionModal";
 import { SubmissionDetailModal } from "@/components/submissions/SubmissionDetailModal";
-import { GuidedDemoModal } from "@/components/demo/GuidedDemoModal";
-import { PresenterViewModal } from "@/components/demo/PresenterViewModal";
 import { formatDate } from "@/lib/utils/formatters";
 import {
   FileText,
@@ -22,7 +20,6 @@ import {
   RefreshCw,
   Search,
   AlertTriangle,
-  Layers,
   ArrowRight,
   ExternalLink,
 } from "lucide-react";
@@ -40,9 +37,6 @@ export default function SubmissionsPage() {
   // Modals
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [selectedSubmissionId, setSelectedSubmissionId] = useState<string | null>(null);
-  const [guideModalOpen, setGuideModalOpen] = useState(false);
-  const [presenterModalOpen, setPresenterModalOpen] = useState(false);
-  const [presetIndex, setPresetIndex] = useState<number | null>(null);
 
   const loadData = React.useCallback(async () => {
     setIsLoading(true);
@@ -109,16 +103,11 @@ export default function SubmissionsPage() {
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-2 border-b border-slate-800/80">
         <div>
-          <div className="flex items-center gap-2.5">
-            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-white">
-              Marketing Submissions & Ingestion
-            </h1>
-            <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-violet-950/70 text-violet-300 border border-violet-800/60 shadow-[0_0_8px_rgba(139,92,246,0.3)]">
-              Live PostgreSQL 17
-            </span>
-          </div>
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-white">
+            Marketing Submissions
+          </h1>
           <p className="text-xs sm:text-sm text-slate-400 mt-1">
-            Track collateral submissions, revise content iterations with versioning, and inspect claims.
+            Submit campaign collateral, track automated claim extractions, and inspect verification outcomes.
           </p>
         </div>
 
@@ -128,24 +117,13 @@ export default function SubmissionsPage() {
             Refresh
           </Button>
           <Button
-            variant="outline"
+            variant="primary"
             size="sm"
-            onClick={() => setPresenterModalOpen(true)}
-            className="border-violet-800/60 text-violet-300 hover:bg-violet-950/40"
+            onClick={() => setCreateModalOpen(true)}
+            className="flex items-center gap-1.5"
           >
-            Presenter View
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setGuideModalOpen(true)}
-            className="border-cyan-800/60 text-cyan-300 hover:bg-cyan-950/40"
-          >
-            <Sparkles className="w-3.5 h-3.5 mr-1.5 text-cyan-400" />
-            Guided Tour
-          </Button>
-          <Button variant="primary" size="sm" onClick={() => setCreateModalOpen(true)}>
-            + New Ingestion
+            <Sparkles className="w-3.5 h-3.5 text-cyan-300" />
+            <span>Check Marketing Content</span>
           </Button>
         </div>
       </div>
@@ -157,7 +135,7 @@ export default function SubmissionsPage() {
           <div className="text-2xl sm:text-3xl font-extrabold text-white mt-1.5 tracking-tight">
             {isLoading ? "..." : submissions.length}
           </div>
-          <div className="text-[11px] text-slate-400 mt-1">Stored in PostgreSQL</div>
+          <div className="text-[11px] text-slate-400 mt-1">All campaigns recorded</div>
         </div>
 
         <div className="p-4 rounded-xl border border-slate-800/80 bg-slate-900/60 backdrop-blur-md shadow-lg">
@@ -177,7 +155,7 @@ export default function SubmissionsPage() {
                   (s) => s.status === "submitted" || s.status === "in_review" || s.status === "under_review"
                 ).length}
           </div>
-          <div className="text-[11px] text-slate-400 mt-1">Awaiting regulatory audit</div>
+          <div className="text-[11px] text-slate-400 mt-1">Awaiting compliance review</div>
         </div>
 
         <div className="p-4 rounded-xl border border-slate-800/80 bg-slate-900/60 backdrop-blur-md shadow-lg">
@@ -185,7 +163,7 @@ export default function SubmissionsPage() {
           <div className="text-2xl sm:text-3xl font-extrabold text-emerald-300 mt-1.5 tracking-tight">
             {isLoading ? "..." : submissions.filter((s) => s.status === "approved" || s.status === "published").length}
           </div>
-          <div className="text-[11px] text-slate-400 mt-1">Signed off for publish</div>
+          <div className="text-[11px] text-slate-400 mt-1">Cleared for publication</div>
         </div>
       </div>
 
@@ -240,148 +218,109 @@ export default function SubmissionsPage() {
         </div>
       </div>
 
-      {/* Submissions Table Card */}
-      <div className="rounded-xl border border-slate-800/80 bg-slate-900/60 backdrop-blur-md shadow-xl overflow-hidden">
-        <div className="p-5 border-b border-slate-800/80 flex flex-row items-center justify-between">
-          <div>
-            <h2 className="text-base font-bold text-white tracking-tight">Active Submissions Ledger</h2>
-            <p className="text-xs text-slate-400 mt-0.5">
-              Live campaign records from PostgreSQL with version tracking and claim linkages.
-            </p>
+      {/* Submissions List */}
+      <div className="space-y-3">
+        {isLoading ? (
+          <div className="p-12 text-center text-slate-400 text-sm">
+            Loading submissions...
           </div>
-          <span className="text-[11px] font-semibold text-violet-300 bg-violet-950/60 border border-violet-800/60 px-2.5 py-0.5 rounded-full">
-            {filteredSubmissions.length} Record(s)
-          </span>
-        </div>
-
-        <div className="p-0">
-          {isLoading ? (
-            <div className="p-12 text-center text-xs text-slate-400">
-              <div className="w-6 h-6 border-2 border-violet-500 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
-              Loading submissions from database...
+        ) : filteredSubmissions.length === 0 ? (
+          <div className="p-12 text-center rounded-2xl border border-slate-800/80 bg-slate-900/40 text-slate-400 space-y-3">
+            <div className="w-12 h-12 mx-auto rounded-full bg-slate-800/80 flex items-center justify-center text-slate-500">
+              <FileText className="w-6 h-6" />
             </div>
-          ) : filteredSubmissions.length === 0 ? (
-            <div className="p-12 text-center text-xs text-slate-400">
-              No submissions matching current criteria.
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs border-collapse">
-                <thead>
-                  <tr className="border-b border-slate-800 bg-slate-950/50 text-slate-400 uppercase font-semibold text-[10px] tracking-wider">
-                    <th className="py-3 px-4 sm:px-6">Campaign / Submission</th>
-                    <th className="py-3 px-4">Channel</th>
-                    <th className="py-3 px-4">Status</th>
-                    <th className="py-3 px-4">Version</th>
-                    <th className="py-3 px-4">Claims Breakdown</th>
-                    <th className="py-3 px-4">Submitted Date</th>
-                    <th className="py-3 px-4 sm:px-6 text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-800/60 text-slate-200">
-                  {filteredSubmissions.map((sub) => {
-                    const isBenchmark = sub.id.startsWith("00000000-0000-0000-0000-00000000010");
+            <p className="text-sm font-medium text-white">No submissions found</p>
+            <p className="text-xs text-slate-400 max-w-sm mx-auto">
+              {searchQuery || statusFilter !== "all"
+                ? "No submissions matched your search or status filter. Try resetting filters."
+                : "Get started by submitting marketing content to extract and verify claims against approved evidence."}
+            </p>
+            <Button variant="primary" size="sm" onClick={() => setCreateModalOpen(true)}>
+              + Check Marketing Content
+            </Button>
+          </div>
+        ) : (
+          filteredSubmissions.map((sub) => {
+            const isPublished = sub.status === "published";
+            const isApproved = sub.status === "approved";
+            const isBlocked = sub.review_claims_count > 0;
 
-                    return (
-                      <tr key={sub.id} className="hover:bg-slate-800/40 transition-colors">
-                        <td className="py-3.5 px-4 sm:px-6 max-w-sm">
-                          <div className="flex items-center gap-2">
-                            <span className="font-semibold text-white line-clamp-1">
-                              {sub.title}
-                            </span>
-                            {isBenchmark && (
-                              <span className="text-[10px] font-semibold text-violet-300 bg-violet-950/80 border border-violet-800/60 px-1.5 rounded shrink-0">
-                                Benchmark
-                              </span>
-                            )}
-                          </div>
-                          <div className="text-[11px] text-slate-400 mt-0.5 flex items-center gap-2">
-                            <span>ID: {sub.id.substring(0, 8)}...</span>
-                            {sub.product_name && (
-                              <>
-                                <span>·</span>
-                                <span className="text-slate-300 truncate max-w-[140px]">
-                                  {sub.product_name}
-                                </span>
-                              </>
-                            )}
-                          </div>
-                        </td>
+            return (
+              <div
+                key={sub.id}
+                onClick={() => setSelectedSubmissionId(sub.id)}
+                className="p-5 rounded-2xl border border-slate-800/80 bg-slate-900/60 backdrop-blur-md hover:border-violet-500/50 hover:bg-slate-900/80 transition-all cursor-pointer shadow-lg group"
+              >
+                <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                  {/* Left: Info */}
+                  <div className="space-y-1.5 max-w-2xl">
+                    <div className="flex items-center gap-2.5 flex-wrap">
+                      <h3 className="text-base font-bold text-white group-hover:text-violet-300 transition-colors">
+                        {sub.title}
+                      </h3>
+                      <StatusPill status={sub.status} />
+                    </div>
 
-                        <td className="py-3.5 px-4">
-                          <span className="inline-flex px-2 py-0.5 rounded-md bg-slate-800/80 border border-slate-700/60 text-slate-300 font-medium text-[11px]">
-                            {sub.channel}
-                          </span>
-                        </td>
+                    <div className="flex items-center gap-3 text-xs text-slate-400 flex-wrap">
+                      {sub.product_name && (
+                        <span>
+                          Product: <strong className="text-slate-300">{sub.product_name}</strong>
+                        </span>
+                      )}
+                      <span>•</span>
+                      <span>
+                        Channel: <Badge variant="outline">{sub.channel}</Badge>
+                      </span>
+                      <span>•</span>
+                      <span>Submitted: {formatDate(sub.created_at)}</span>
+                      <span>•</span>
+                      <span>By: {sub.submitted_by}</span>
+                    </div>
 
-                        <td className="py-3.5 px-4">
-                          <StatusPill status={sub.status} />
-                        </td>
+                    {sub.content && (
+                      <p className="text-xs text-slate-400 line-clamp-2 pt-1 font-normal italic">
+                        &ldquo;{sub.content}&rdquo;
+                      </p>
+                    )}
+                  </div>
 
-                        <td className="py-3.5 px-4">
-                          <Badge variant="indigo" size="sm">
-                            v{sub.current_version_number} ({sub.total_versions_count} rev)
-                          </Badge>
-                        </td>
+                  {/* Right: Metrics & Actions */}
+                  <div className="flex items-center justify-between lg:justify-end gap-4 shrink-0 pt-3 lg:pt-0 border-t lg:border-t-0 border-slate-800/60">
+                    <div className="flex items-center gap-3 text-xs">
+                      <div className="text-center px-3 py-1.5 rounded-xl bg-slate-800/60 border border-slate-700/60">
+                        <div className="font-extrabold text-white text-sm">{sub.total_claims_count}</div>
+                        <div className="text-[10px] text-slate-400 uppercase font-semibold">Claims</div>
+                      </div>
+                      <div className="text-center px-3 py-1.5 rounded-xl bg-emerald-950/40 border border-emerald-800/40">
+                        <div className="font-extrabold text-emerald-300 text-sm">{sub.supported_claims_count}</div>
+                        <div className="text-[10px] text-emerald-400 uppercase font-semibold">Supported</div>
+                      </div>
+                      <div className="text-center px-3 py-1.5 rounded-xl bg-amber-950/40 border border-amber-800/40">
+                        <div className="font-extrabold text-amber-300 text-sm">{sub.review_claims_count}</div>
+                        <div className="text-[10px] text-amber-400 uppercase font-semibold">Review</div>
+                      </div>
+                    </div>
 
-                        <td className="py-3.5 px-4">
-                          <div className="flex items-center gap-2 text-[11px]">
-                            <span className="font-semibold text-white">
-                              {sub.total_claims_count} claims
-                            </span>
-                            {sub.supported_claims_count > 0 && (
-                              <>
-                                <span className="text-slate-600">|</span>
-                                <span className="text-emerald-400 font-medium">
-                                  {sub.supported_claims_count} supported
-                                </span>
-                              </>
-                            )}
-                            {sub.review_claims_count > 0 && (
-                              <>
-                                <span className="text-slate-600">|</span>
-                                <span className="text-amber-400 font-medium">
-                                  {sub.review_claims_count} review
-                                </span>
-                              </>
-                            )}
-                          </div>
-                        </td>
-
-                        <td className="py-3.5 px-4 text-slate-400 whitespace-nowrap">
-                          {formatDate(sub.submission_date || sub.created_at)}
-                        </td>
-
-                        <td className="py-3.5 px-4 sm:px-6 text-right">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setSelectedSubmissionId(sub.id)}
-                          >
-                            Inspect & Revise
-                          </Button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-violet-400 font-semibold group-hover:text-violet-300 flex items-center gap-1">
+                        <span>Details</span>
+                        <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })
+        )}
       </div>
 
-      {/* Create Submission Modal */}
+      {/* Submission Creation Modal */}
       <CreateSubmissionModal
-        key={`${createModalOpen}-${presetIndex ?? "none"}`}
         isOpen={createModalOpen}
-        onClose={() => {
-          setCreateModalOpen(false);
-          setPresetIndex(null);
-        }}
+        onClose={() => setCreateModalOpen(false)}
         onSuccess={loadData}
         products={products}
-        initialPresetIndex={presetIndex}
       />
 
       {/* Submission Detail & Versioning Modal */}
@@ -389,24 +328,6 @@ export default function SubmissionsPage() {
         submissionId={selectedSubmissionId}
         onClose={() => setSelectedSubmissionId(null)}
         onUpdated={loadData}
-      />
-      {/* Guided Demo Walkthrough Modal */}
-      <GuidedDemoModal
-        isOpen={guideModalOpen}
-        onClose={() => setGuideModalOpen(false)}
-        onSelectPreset={() => {
-          setGuideModalOpen(false);
-          setCreateModalOpen(true);
-        }}
-      />
-      {/* Presenter View Modal */}
-      <PresenterViewModal
-        isOpen={presenterModalOpen}
-        onClose={() => setPresenterModalOpen(false)}
-        onLoadScenario={(idx) => {
-          setPresetIndex(idx);
-          setCreateModalOpen(true);
-        }}
       />
     </AppLayout>
   );

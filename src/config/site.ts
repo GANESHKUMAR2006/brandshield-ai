@@ -33,13 +33,6 @@ export const NAVIGATION_ITEMS: readonly NavItem[] = [
     description: "Governance overview and claim pipeline metrics",
   },
   {
-    name: "Source Library",
-    href: "/sources",
-    icon: "FolderGit2",
-    badge: "14 Dossiers",
-    description: "Approved product dossiers, clinical studies, and guidelines",
-  },
-  {
     name: "Submissions",
     href: "/submissions",
     icon: "FileCheck",
@@ -47,10 +40,17 @@ export const NAVIGATION_ITEMS: readonly NavItem[] = [
     description: "Marketing collaterals and ad copies undergoing review",
   },
   {
-    name: "Claim Ledger",
+    name: "Claims",
     href: "/claims",
     icon: "ShieldAlert",
     description: "Cross-campaign registry of extracted and verified claims",
+  },
+  {
+    name: "Evidence Library",
+    href: "/sources",
+    icon: "FolderGit2",
+    badge: "14 Dossiers",
+    description: "Approved product dossiers, clinical studies, and guidelines",
   },
   {
     name: "Reviews",
@@ -60,17 +60,10 @@ export const NAVIGATION_ITEMS: readonly NavItem[] = [
     description: "Human-in-the-loop compliance review queue",
   },
   {
-    name: "Audit History",
+    name: "Audit Logs",
     href: "/audit",
     icon: "History",
     description: "Tamper-evident governance trail and compliance logs",
-  },
-  {
-    name: "Policies",
-    href: "/policies",
-    icon: "ShieldAlert",
-    badge: "7 Active",
-    description: "Configurable compliance policies, deterministic rules & simulation",
   },
   {
     name: "Settings",

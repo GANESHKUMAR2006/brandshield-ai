@@ -4,17 +4,14 @@ import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { SITE_CONFIG, DEMO_WORKSPACE, CURRENT_USER } from "@/config/site";
 import { BrandShieldLogo } from "@/components/ui/Icons";
-import { SystemHealthModal } from "@/components/system/SystemHealthModal";
 import {
   Menu,
   Bell,
   Search,
   Building2,
-  Activity,
   CheckCircle2,
   AlertTriangle,
   FileText,
-  X,
 } from "lucide-react";
 
 interface TopNavProps {
@@ -24,9 +21,8 @@ interface TopNavProps {
 export function TopNav({ onOpenMobileMenu }: TopNavProps) {
   const router = useRouter();
   const [showNotifications, setShowNotifications] = useState(false);
-  const [healthModalOpen, setHealthModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [isSearchFocused, setIsSearchFocused] = useState(false);
+  const [_isSearchFocused, setIsSearchFocused] = useState(false);
 
   // Keyboard shortcut for search
   useEffect(() => {
@@ -107,20 +103,8 @@ export function TopNav({ onOpenMobileMenu }: TopNavProps) {
         </form>
       </div>
 
-      {/* Right side: Health Diagnostics, Notifications, User Profile */}
+      {/* Right side: Notifications & User Profile */}
       <div className="flex items-center gap-2.5 sm:gap-3.5">
-        {/* System Health Diagnostic Pill */}
-        <button
-          type="button"
-          onClick={() => setHealthModalOpen(true)}
-          className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-lg bg-emerald-950/50 text-emerald-300 border border-emerald-800/60 hover:bg-emerald-900/40 font-medium transition-all cursor-pointer shadow-xs"
-          title="System Health Diagnostics"
-        >
-          <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_#34d399] animate-pulse" />
-          <Activity className="w-3.5 h-3.5 text-emerald-400" />
-          <span>Health Diagnostics</span>
-        </button>
-
         {/* Notification Bell */}
         <div className="relative">
           <button
@@ -146,7 +130,7 @@ export function TopNav({ onOpenMobileMenu }: TopNavProps) {
               <div className="flex items-center justify-between pb-2.5 mb-2.5 border-b border-slate-800 font-semibold text-white">
                 <span className="flex items-center gap-1.5">
                   <Bell className="w-3.5 h-3.5 text-violet-400" />
-                  System Compliance Alerts
+                  Compliance Notifications
                 </span>
                 <span className="text-[10px] text-violet-300 bg-violet-950/80 border border-violet-800/60 px-1.5 py-0.5 rounded font-medium">
                   3 unread
@@ -200,8 +184,6 @@ export function TopNav({ onOpenMobileMenu }: TopNavProps) {
           </div>
         </div>
       </div>
-
-      <SystemHealthModal isOpen={healthModalOpen} onClose={() => setHealthModalOpen(false)} />
     </header>
   );
 }

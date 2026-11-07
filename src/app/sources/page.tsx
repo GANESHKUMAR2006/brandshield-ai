@@ -110,26 +110,21 @@ export default function SourcesPage() {
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-2 border-b border-slate-800/80">
         <div>
-          <div className="flex items-center gap-2.5">
-            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-white">
-              Source Library & Ground Truth Vault
-            </h1>
-            <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-violet-950/70 text-violet-300 border border-violet-800/60 shadow-[0_0_8px_rgba(139,92,246,0.3)]">
-              Live PostgreSQL 17
-            </span>
-          </div>
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-white">
+            Evidence Library
+          </h1>
           <p className="text-xs sm:text-sm text-slate-400 mt-1">
-            Approved product facts, registered clinical dossiers, active promotions, and versioned substantiation evidence.
+            Approved product facts, registered clinical dossiers, active promotions, and substantiation evidence.
           </p>
         </div>
 
         <div className="flex items-center gap-2.5">
           <Button variant="outline" size="sm" onClick={loadSources} isLoading={isLoading}>
             <RefreshCw className="w-3.5 h-3.5 mr-1" />
-            Refresh Live Data
+            Refresh Evidence
           </Button>
           <Button variant="primary" size="sm">
-            + Upload New Dossier
+            + Upload Evidence Dossier
           </Button>
         </div>
       </div>
@@ -137,11 +132,11 @@ export default function SourcesPage() {
       {/* Top Level Summary Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <div className="p-4 rounded-xl border border-slate-800/80 bg-slate-900/60 backdrop-blur-md shadow-lg">
-          <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Source Dossiers</div>
+          <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Evidence Dossiers</div>
           <div className="text-2xl sm:text-3xl font-extrabold text-white mt-1.5 tracking-tight">
             {isLoading ? "..." : data?.documents.length ?? 0}
           </div>
-          <div className="text-[11px] text-slate-400 mt-1">Versioned PDF studies</div>
+          <div className="text-[11px] text-slate-400 mt-1">Indexed clinical dossiers</div>
         </div>
 
         <div className="p-4 rounded-xl border border-slate-800/80 bg-slate-900/60 backdrop-blur-md shadow-lg">
