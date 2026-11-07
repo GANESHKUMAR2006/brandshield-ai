@@ -14,20 +14,20 @@ import { OllamaProvider } from "./ollama-provider";
 import { GroqProvider } from "./groq-provider";
 
 export function getConfiguredProvider(): LLMProvider {
-  const provider = (process.env.LLM_PROVIDER || "").trim().toLowerCase();
+  const provider = (process.env.LLM_PROVIDER || "groq").trim().toLowerCase();
 
   // Explicit mock provider for automated testing and offline development
   if (provider === "mock") {
     return new MockLLMProvider();
   }
 
-  // Groq provider (Ultra-low latency inference)
-  if (provider === "groq" || (!provider && process.env.GROQ_API_KEY && !process.env.OPENAI_API_KEY)) {
+  // Groq provider (Standardized active cloud LLM provider)
+  if (provider === "groq") {
     const key = process.env.GROQ_API_KEY;
     if (!key || key.startsWith("gsk_placeholder") || key.includes("placeholder")) {
       throw new Error(
         "Groq provider selected, but GROQ_API_KEY is missing or contains placeholder. " +
-          "Configure a valid key in .env.local or set LLM_PROVIDER=mock for automated testing."
+          "Configure a valid key in server environment variables or set LLM_PROVIDER=mock for automated testing."
       );
     }
     return new GroqProvider();

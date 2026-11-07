@@ -77,56 +77,6 @@ export async function GET(): Promise<NextResponse<ComprehensiveHealthResponse>> 
     }
   }
 
-  // 2. Ollama Local LLM Check
-  const rawOllamaBase = process.env.OLLAMA_BASE_URL || "http://localhost:11434";
-  const ollamaHost = rawOllamaBase.replace(/\/v1\/?$/, "").replace(/\/+$/, "");
-  const targetModel = process.env.OLLAMA_MODEL || "qwen3:4b";
-
-  let ollamaStatus: "connected" | "disconnected" | "unconfigured" = "disconnected";
-  let ollamaLatencyMs: number | undefined;
-  let modelInstalled = false;
-  let availableModels: string[] = [];
-  let ollamaError: string | undefined;
-  let recoveryHint: string | undefined;
-
-  const ollamaStart = Date.now();
-  try {
-    const res = await fetch(`${ollamaHost}/api/tags`, {
-      method: "GET",
-      signal: AbortSignal.timeout(3000), // 3s fast timeout
-      headers: { "User-Agent": "BrandShield-AI-Health/1.0" },
-    });
-
-    if (res.ok) {
-      const json = await res.json();
-      ollamaLatencyMs = Date.now() - ollamaStart;
-      ollamaStatus = "connected";
-
-      if (json.models && Array.isArray(json.models)) {
-        availableModels = json.models.map((m: { name?: string }) => m.name || "").filter(Boolean);
-        modelInstalled = availableModels.some((m) =>
-          m.toLowerCase().includes(targetModel.toLowerCase())
-        );
-      }
-
-      if (!modelInstalled) {
-        recoveryHint = `Target model "${targetModel}" is not pulled. Run "ollama pull ${targetModel}" in terminal.`;
-      }
-    } else {
-      ollamaStatus = "disconnected";
-      ollamaError = `HTTP ${res.status}: ${res.statusText}`;
-      recoveryHint = `Ollama server responded with error. Ensure Ollama service is healthy at ${ollamaHost}.`;
-    }
-  } catch (err: unknown) {
-    ollamaStatus = "disconnected";
-    ollamaError = err instanceof Error ? err.message : "Connection failed";
-    recoveryHint = `Ollama server unreachable at ${ollamaHost}. Start the service with "ollama serve" or run "ollama run ${targetModel}".`;
-  }
-
-  // 3. Verification Engine Check
-  const engineStatus: "operational" | "degraded" =
-    dbStatus === "connected" ? "operational" : "degraded";
-
   // Active LLM Provider Check
   const activeLlmProvider = (process.env.LLM_PROVIDER || "groq").trim().toLowerCase();
   const isGroqActive = activeLlmProvider === "groq";
@@ -135,9 +85,65 @@ export async function GET(): Promise<NextResponse<ComprehensiveHealthResponse>> 
     !process.env.GROQ_API_KEY.includes("placeholder")
   );
 
+  // 2. LLM Provider Check
+  const rawOllamaBase = process.env.OLLAMA_BASE_URL || "http://localhost:11434";
+  const ollamaHost = rawOllamaBase.replace(/\/v1\/?$/, "").replace(/\/+$/, "");
+  const targetModel = isGroqActive
+    ? process.env.GROQ_MODEL || "openai/gpt-oss-20b"
+    : process.env.OLLAMA_MODEL || "qwen3:4b";
+
+  let ollamaStatus: "connected" | "disconnected" | "unconfigured" = isGroqActive
+    ? (isGroqConfigured ? "connected" : "disconnected")
+    : "disconnected";
+  let ollamaLatencyMs: number | undefined;
+  let modelInstalled = isGroqActive ? isGroqConfigured : false;
+  let availableModels: string[] = isGroqActive ? [targetModel] : [];
+  let ollamaError: string | undefined = isGroqActive && !isGroqConfigured ? "GROQ_API_KEY is not configured" : undefined;
+  let recoveryHint: string | undefined = isGroqActive && !isGroqConfigured ? "Configure GROQ_API_KEY in server environment." : undefined;
+
+  if (!isGroqActive) {
+    const ollamaStart = Date.now();
+    try {
+      const res = await fetch(`${ollamaHost}/api/tags`, {
+        method: "GET",
+        signal: AbortSignal.timeout(3000), // 3s fast timeout
+        headers: { "User-Agent": "BrandShield-AI-Health/1.0" },
+      });
+
+      if (res.ok) {
+        const json = await res.json();
+        ollamaLatencyMs = Date.now() - ollamaStart;
+        ollamaStatus = "connected";
+
+        if (json.models && Array.isArray(json.models)) {
+          availableModels = json.models.map((m: { name?: string }) => m.name || "").filter(Boolean);
+          modelInstalled = availableModels.some((m) =>
+            m.toLowerCase().includes(targetModel.toLowerCase())
+          );
+        }
+
+        if (!modelInstalled) {
+          recoveryHint = `Target model "${targetModel}" is not pulled. Run "ollama pull ${targetModel}" in terminal.`;
+        }
+      } else {
+        ollamaStatus = "disconnected";
+        ollamaError = `HTTP ${res.status}: ${res.statusText}`;
+        recoveryHint = `Ollama server responded with error. Ensure Ollama service is healthy at ${ollamaHost}.`;
+      }
+    } catch (err: unknown) {
+      ollamaStatus = "disconnected";
+      ollamaError = err instanceof Error ? err.message : "Connection failed";
+      recoveryHint = `Ollama server unreachable at ${ollamaHost}. Start the service with "ollama serve" or run "ollama run ${targetModel}".`;
+    }
+  }
+
+  // 3. Verification Engine Check
+  const engineStatus: "operational" | "degraded" =
+    dbStatus === "connected" ? "operational" : "degraded";
+
   const activeLlmStatus = isGroqActive
-    ? isGroqConfigured ? "connected" : "disconnected"
-    : ollamaStatus === "connected" && modelInstalled ? "connected" : "disconnected";
+    ? (isGroqConfigured ? "connected" : "disconnected")
+    : (ollamaStatus === "connected" && modelInstalled ? "connected" : "disconnected");
 
   // Overall status evaluation
   const overallStatus: "ok" | "degraded" | "error" =

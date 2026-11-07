@@ -117,15 +117,27 @@ export async function resolveServerSession(
     if (err instanceof WorkspaceAccessError) {
       throw err;
     }
-    if (isProduction) {
+    const allowDemoAuth =
+      process.env.ALLOW_DEMO_AUTH === "true" ||
+      process.env.NEXT_PUBLIC_ALLOW_DEMO_AUTH === "true" ||
+      process.env.NEXT_PUBLIC_APP_ENV === "demo" ||
+      process.env.NEXT_PUBLIC_APP_ENV === "preview";
+
+    if (isProduction && !allowDemoAuth) {
       throw new AuthenticationRequiredError(
         `Production authentication failure: Unable to verify user session (${err instanceof Error ? err.message : "Unknown error"}).`
       );
     }
   }
 
-  // Production Gate: Fail closed
-  if (isProduction) {
+  // Production Gate: Fail closed unless demo showcase authentication is explicitly enabled
+  const allowDemoAuth =
+    process.env.ALLOW_DEMO_AUTH === "true" ||
+    process.env.NEXT_PUBLIC_ALLOW_DEMO_AUTH === "true" ||
+    process.env.NEXT_PUBLIC_APP_ENV === "demo" ||
+    process.env.NEXT_PUBLIC_APP_ENV === "preview";
+
+  if (isProduction && !allowDemoAuth) {
     throw new AuthenticationRequiredError(
       "Production authentication failure: No valid authenticated Supabase session found. Anonymous execution is prohibited in production."
     );

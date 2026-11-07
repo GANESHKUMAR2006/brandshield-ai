@@ -355,7 +355,15 @@ export async function fetchClaims(filters?: {
   const url = `/api/claims${params.toString() ? `?${params.toString()}` : ""}`;
   const res = await fetch(url, { cache: "no-store" });
   if (!res.ok) {
-    throw new Error(`Failed to fetch claims: ${res.statusText}`);
+    let detail = "";
+    try {
+      const errJson = await res.json();
+      detail = errJson?.error || errJson?.details || "";
+    } catch {
+      // Fall back to status text
+    }
+    const reason = detail ? `: ${detail}` : (res.statusText ? `: ${res.statusText}` : ` (HTTP ${res.status})`);
+    throw new Error(`Failed to fetch claims${reason}`);
   }
   const json = await res.json();
   return json.data;

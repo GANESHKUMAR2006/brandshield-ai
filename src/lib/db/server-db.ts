@@ -5,9 +5,15 @@ let pool: Pool | null = null;
 export function getDbPool(): Pool {
   if (pool) return pool;
 
-  const connectionString = process.env.SUPABASE_DATABASE_URL;
+  const connectionString =
+    process.env.SUPABASE_DATABASE_URL ||
+    process.env.DATABASE_URL ||
+    process.env.POSTGRES_URL;
+
   if (!connectionString) {
-    throw new Error("SUPABASE_DATABASE_URL is not configured in server environment.");
+    throw new Error(
+      "Database connection string is not configured. Please set SUPABASE_DATABASE_URL (or DATABASE_URL) in server environment."
+    );
   }
 
   pool = new Pool({
