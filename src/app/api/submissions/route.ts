@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 import { query, withTransaction } from "@/lib/db/server-db";
 import { z } from "zod";
-import { resolveServerSession, AuthenticationRequiredError } from "@/lib/auth/server-session";
+import {
+  resolveServerSession,
+  AuthenticationRequiredError,
+  WorkspaceAccessError,
+} from "@/lib/auth/server-session";
 
 const uuidRegex = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 
@@ -57,6 +61,12 @@ export async function GET() {
       return NextResponse.json(
         { success: false, error: "Authentication required", details: error.message },
         { status: 401 }
+      );
+    }
+    if (error instanceof WorkspaceAccessError) {
+      return NextResponse.json(
+        { success: false, error: "Forbidden", details: error.message },
+        { status: 403 }
       );
     }
     const message = error instanceof Error ? error.message : "Failed to retrieve submissions";
@@ -159,6 +169,12 @@ export async function POST(request: Request) {
       return NextResponse.json(
         { success: false, error: "Authentication required", details: error.message },
         { status: 401 }
+      );
+    }
+    if (error instanceof WorkspaceAccessError) {
+      return NextResponse.json(
+        { success: false, error: "Forbidden", details: error.message },
+        { status: 403 }
       );
     }
     const message = error instanceof Error ? error.message : "Failed to create submission";

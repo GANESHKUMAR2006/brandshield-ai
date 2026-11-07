@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { resolveServerSession, AuthenticationRequiredError } from "@/lib/auth/server-session";
+import {
+  resolveServerSession,
+  AuthenticationRequiredError,
+  WorkspaceAccessError,
+  UnauthorizedRoleError,
+} from "@/lib/auth/server-session";
 import { AuditService } from "@/lib/audit/audit-service";
 
 // GET /api/audit - Live immutable audit log with full filtering
@@ -40,6 +45,9 @@ export async function GET(request: NextRequest) {
   } catch (err: unknown) {
     if (err instanceof AuthenticationRequiredError) {
       return NextResponse.json({ success: false, error: "Authentication required", details: err.message }, { status: 401 });
+    }
+    if (err instanceof WorkspaceAccessError || err instanceof UnauthorizedRoleError) {
+      return NextResponse.json({ success: false, error: "Forbidden", details: err.message }, { status: 403 });
     }
     const message = err instanceof Error ? err.message : "Failed to load audit events";
     const status = message.includes("Forbidden") ? 403 : message.includes("not configured") ? 503 : 500;

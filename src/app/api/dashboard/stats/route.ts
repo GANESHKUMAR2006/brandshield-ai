@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
-import { resolveServerSession } from "@/lib/auth/server-session";
+import {
+  resolveServerSession,
+  AuthenticationRequiredError,
+  WorkspaceAccessError,
+  UnauthorizedRoleError,
+} from "@/lib/auth/server-session";
 import { query } from "@/lib/db/server-db";
 import { ComplianceAnalyticsService } from "@/lib/analytics/analytics-service";
 
@@ -116,6 +121,18 @@ export async function GET() {
       recentAuditEvents,
     });
   } catch (error) {
+    if (error instanceof AuthenticationRequiredError) {
+      return NextResponse.json(
+        { success: false, error: "Authentication required", details: error.message },
+        { status: 401 }
+      );
+    }
+    if (error instanceof WorkspaceAccessError || error instanceof UnauthorizedRoleError) {
+      return NextResponse.json(
+        { success: false, error: "Forbidden", details: error.message },
+        { status: 403 }
+      );
+    }
     const message = error instanceof Error ? error.message : "Failed to load dashboard metrics";
     return NextResponse.json(
       { success: false, error: "Database error loading dashboard stats", details: message },

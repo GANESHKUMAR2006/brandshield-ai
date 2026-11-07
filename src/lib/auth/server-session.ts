@@ -92,14 +92,18 @@ export async function resolveServerSession(
         ? [rawWorkspaces]
         : [];
 
-      // If user is authenticated in production, they must hold explicit workspace membership
-      if (isProduction || userWorkspaces.length > 0) {
+      // If user is authenticated, validate tenant workspace access
+      if (userWorkspaces.length > 0) {
         const isMember = validateUserWorkspaceMembership(userWorkspaces, targetWorkspaceSlug);
         if (!isMember) {
           throw new WorkspaceAccessError(
             `Forbidden: User "${user.id}" does not belong to requested workspace "${targetWorkspaceSlug}".`
           );
         }
+      } else if (targetWorkspaceSlug !== DERMAGLOW_WORKSPACE_SLUG) {
+        throw new WorkspaceAccessError(
+          `Forbidden: User "${user.id}" does not belong to requested workspace "${targetWorkspaceSlug}".`
+        );
       }
 
       return {

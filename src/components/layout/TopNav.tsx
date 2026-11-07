@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { SITE_CONFIG, DEMO_WORKSPACE, CURRENT_USER } from "@/config/site";
 import { BrandShieldLogo } from "@/components/ui/Icons";
@@ -12,22 +12,93 @@ import {
   CheckCircle2,
   AlertTriangle,
   FileText,
+  LogOut,
+  User,
+  Shield,
+  ChevronDown,
 } from "lucide-react";
 
 interface TopNavProps {
   onOpenMobileMenu: () => void;
 }
 
+interface UserSessionInfo {
+  name: string;
+  email: string;
+  role: string;
+  initials: string;
+  workspaceSlug: string;
+}
+
 export function TopNav({ onOpenMobileMenu }: TopNavProps) {
   const router = useRouter();
   const [showNotifications, setShowNotifications] = useState(false);
+  const [showUserMenu, setShowUserMenu] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [_isSearchFocused, setIsSearchFocused] = useState(false);
+  const [userInfo, setUserInfo] = useState<UserSessionInfo>({
+    name: CURRENT_USER.name,
+    email: CURRENT_USER.email,
+    role: CURRENT_USER.role,
+    initials: CURRENT_USER.initials,
+    workspaceSlug: "dermaglow",
+  });
+
+  const userMenuRef = useRef<HTMLDivElement>(null);
+  const notifRef = useRef<HTMLDivElement>(null);
+
+  // Fetch verified user session from server
+  useEffect(() => {
+    let isMounted = true;
+    fetch("/api/auth/me")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!isMounted || !data?.user) return;
+        const u = data.user;
+        const names = (u.userName || u.userEmail || "Reviewer").split(" ");
+        const initials =
+          names.length > 1
+            ? `${names[0][0]}${names[names.length - 1][0]}`.toUpperCase()
+            : (u.userName || "R").substring(0, 2).toUpperCase();
+
+        setUserInfo({
+          name: u.userName || CURRENT_USER.name,
+          email: u.userEmail || CURRENT_USER.email,
+          role: u.role ? u.role.replace(/_/g, " ") : CURRENT_USER.role,
+          initials,
+          workspaceSlug: u.workspaceSlug || "dermaglow",
+        });
+      })
+      .catch(() => {
+        // Graceful fallback to default demo identity
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  // Close dropdowns when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
+        setShowUserMenu(false);
+      }
+      if (notifRef.current && !notifRef.current.contains(event.target as Node)) {
+        setShowNotifications(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   // Keyboard shortcut for search
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.key === "/" || (e.ctrlKey && e.key === "k")) && !["INPUT", "TEXTAREA"].includes((e.target as HTMLElement)?.tagName)) {
+      if (
+        (e.key === "/" || (e.ctrlKey && e.key === "k")) &&
+        !["INPUT", "TEXTAREA"].includes((e.target as HTMLElement)?.tagName)
+      ) {
         e.preventDefault();
         const searchInput = document.getElementById("global-search-input");
         searchInput?.focus();
@@ -43,6 +114,16 @@ export function TopNav({ onOpenMobileMenu }: TopNavProps) {
     router.push(`/claims?q=${encodeURIComponent(searchQuery.trim())}`);
   };
 
+  const handleSignOut = async () => {
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+    } catch {
+      // Proceed with redirection even if network fails
+    }
+    router.push("/login");
+    router.refresh();
+  };
+
   return (
     <header className="sticky top-0 z-30 flex items-center justify-between h-16 px-4 sm:px-6 bg-[#0B0F19]/80 backdrop-blur-md border-b border-slate-800/80 text-slate-100">
       {/* Left side: Mobile Toggle & Mobile Logo & Desktop Breadcrumb */}
@@ -50,7 +131,7 @@ export function TopNav({ onOpenMobileMenu }: TopNavProps) {
         <button
           type="button"
           onClick={onOpenMobileMenu}
-          className="lg:hidden p-2 -ml-2 text-slate-400 hover:text-white hover:bg-slate-800/60 rounded-lg transition-colors focus:outline-hidden focus:ring-2 focus:ring-violet-500"
+          className="lg:hidden p-2 -ml-2 text-slate-400 hover:text-white hover:bg-slate-800/60 rounded-lg transition-colors focus:outline-hidden focus:ring-2 focus:ring-violet-500 cursor-pointer"
           aria-label="Open sidebar navigation"
         >
           <Menu className="w-5 h-5" />
@@ -73,7 +154,7 @@ export function TopNav({ onOpenMobileMenu }: TopNavProps) {
           </span>
           <span className="text-slate-600">/</span>
           <span className="text-slate-400 font-medium flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
+            <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 shadow-[0_0_6px_#22d3ee]" />
             Evidence-Linked Governance
           </span>
         </div>
@@ -106,7 +187,7 @@ export function TopNav({ onOpenMobileMenu }: TopNavProps) {
       {/* Right side: Notifications & User Profile */}
       <div className="flex items-center gap-2.5 sm:gap-3.5">
         {/* Notification Bell */}
-        <div className="relative">
+        <div className="relative" ref={notifRef}>
           <button
             type="button"
             onClick={() => setShowNotifications(!showNotifications)}
@@ -169,19 +250,74 @@ export function TopNav({ onOpenMobileMenu }: TopNavProps) {
           )}
         </div>
 
-        {/* User Profile */}
-        <div className="flex items-center gap-2.5 pl-2 sm:pl-3 border-l border-slate-800">
-          <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-violet-600 to-indigo-600 text-white flex items-center justify-center text-xs font-bold tracking-wider shadow-[0_0_10px_rgba(139,92,246,0.3)] border border-violet-400/30">
-            {CURRENT_USER.initials}
-          </div>
-          <div className="hidden md:flex flex-col text-left">
-            <span className="text-xs font-semibold text-white leading-tight">
-              {CURRENT_USER.name}
-            </span>
-            <span className="text-[10px] text-slate-400 truncate max-w-[130px]">
-              {CURRENT_USER.role}
-            </span>
-          </div>
+        {/* User Profile Dropdown Menu */}
+        <div className="relative" ref={userMenuRef}>
+          <button
+            type="button"
+            onClick={() => setShowUserMenu(!showUserMenu)}
+            className="flex items-center gap-2.5 pl-2 sm:pl-3 border-l border-slate-800 hover:opacity-90 transition-opacity focus:outline-none cursor-pointer"
+            aria-label="User profile menu"
+          >
+            <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-violet-600 to-indigo-600 text-white flex items-center justify-center text-xs font-bold tracking-wider shadow-[0_0_10px_rgba(139,92,246,0.3)] border border-violet-400/30">
+              {userInfo.initials}
+            </div>
+            <div className="hidden md:flex flex-col text-left">
+              <span className="text-xs font-semibold text-white leading-tight">
+                {userInfo.name}
+              </span>
+              <span className="text-[10px] text-slate-400 truncate max-w-[130px] capitalize">
+                {userInfo.role}
+              </span>
+            </div>
+            <ChevronDown className="w-3.5 h-3.5 text-slate-400 hidden sm:block" />
+          </button>
+
+          {/* User Profile Popover */}
+          {showUserMenu && (
+            <div
+              className="absolute right-0 mt-2 w-64 bg-slate-900/95 backdrop-blur-xl border border-slate-700/80 rounded-xl shadow-2xl p-3 z-50 text-xs animate-in fade-in zoom-in-95 duration-100"
+              role="menu"
+            >
+              {/* Profile Details */}
+              <div className="pb-2.5 mb-2 border-b border-slate-800">
+                <p className="font-semibold text-white truncate">{userInfo.name}</p>
+                <p className="text-[11px] text-slate-400 truncate">{userInfo.email}</p>
+                <div className="mt-2 flex items-center gap-1.5">
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-violet-950/80 text-violet-300 border border-violet-800/60 capitalize flex items-center gap-1">
+                    <Shield className="w-2.5 h-2.5 text-violet-400" />
+                    {userInfo.role}
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-800 text-slate-300 border border-slate-700">
+                    DermaGlow
+                  </span>
+                </div>
+              </div>
+
+              {/* Menu Actions */}
+              <div className="space-y-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowUserMenu(false);
+                    router.push("/settings");
+                  }}
+                  className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800/60 transition-colors text-left cursor-pointer"
+                >
+                  <User className="w-3.5 h-3.5 text-slate-400" />
+                  <span>Workspace Settings</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleSignOut}
+                  className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-rose-300 hover:text-rose-200 hover:bg-rose-950/30 transition-colors text-left cursor-pointer border border-transparent hover:border-rose-900/40"
+                >
+                  <LogOut className="w-3.5 h-3.5 text-rose-400" />
+                  <span>Sign Out</span>
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </header>

@@ -33,11 +33,65 @@ export async function updateSession(request: NextRequest) {
     },
   });
 
-  // Refresh user session safely without throwing unhandled exceptions
+  // Safe user resolution from verified Supabase session
+  let user = null;
   try {
-    await supabase.auth.getUser();
+    const { data } = await supabase.auth.getUser();
+    user = data.user;
   } catch {
-    // Session refresh error handled gracefully
+    user = null;
+  }
+
+  const pathname = request.nextUrl.pathname;
+  const isProduction =
+    process.env.NODE_ENV === "production" ||
+    process.env.NEXT_PUBLIC_APP_ENV === "production";
+
+  // Public paths that never require authentication
+  const isPublicPath =
+    pathname === "/login" ||
+    pathname.startsWith("/api/health") ||
+    pathname.startsWith("/api/auth/login") ||
+    pathname.startsWith("/api/auth/logout");
+
+  // API routes should never receive 307 redirects to HTML login pages;
+  // let route handlers execute and return proper HTTP 401/403 JSON payloads.
+  if (pathname.startsWith("/api/")) {
+    return supabaseResponse;
+  }
+
+  // Authenticated user accessing login page -> redirect to dashboard
+  if (user && pathname === "/login") {
+    const redirectUrl = request.nextUrl.clone();
+    redirectUrl.pathname = "/dashboard";
+    const redirectResponse = NextResponse.redirect(redirectUrl);
+    supabaseResponse.cookies.getAll().forEach((cookie) => {
+      redirectResponse.cookies.set(cookie);
+    });
+    return redirectResponse;
+  }
+
+  // Root path routing
+  if (pathname === "/") {
+    const redirectUrl = request.nextUrl.clone();
+    redirectUrl.pathname = user || !isProduction ? "/dashboard" : "/login";
+    const redirectResponse = NextResponse.redirect(redirectUrl);
+    supabaseResponse.cookies.getAll().forEach((cookie) => {
+      redirectResponse.cookies.set(cookie);
+    });
+    return redirectResponse;
+  }
+
+  // Unauthenticated user in production accessing protected pages -> redirect to login
+  if (!user && isProduction && !isPublicPath) {
+    const redirectUrl = request.nextUrl.clone();
+    redirectUrl.pathname = "/login";
+    redirectUrl.searchParams.set("redirect", pathname);
+    const redirectResponse = NextResponse.redirect(redirectUrl);
+    supabaseResponse.cookies.getAll().forEach((cookie) => {
+      redirectResponse.cookies.set(cookie);
+    });
+    return redirectResponse;
   }
 
   return supabaseResponse;

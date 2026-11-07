@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { resolveServerSession } from "@/lib/auth/server-session";
+import {
+  resolveServerSession,
+  AuthenticationRequiredError,
+  WorkspaceAccessError,
+  UnauthorizedRoleError,
+} from "@/lib/auth/server-session";
 import { ReviewWorkflowService } from "@/lib/review/review-service";
 
 const submitDecisionSchema = z.object({
@@ -44,6 +49,18 @@ export async function GET(request: NextRequest) {
       data: queue,
     });
   } catch (err: unknown) {
+    if (err instanceof AuthenticationRequiredError) {
+      return NextResponse.json(
+        { success: false, error: "Authentication required", details: err.message },
+        { status: 401 }
+      );
+    }
+    if (err instanceof WorkspaceAccessError || err instanceof UnauthorizedRoleError) {
+      return NextResponse.json(
+        { success: false, error: "Forbidden", details: err.message },
+        { status: 403 }
+      );
+    }
     const message = err instanceof Error ? err.message : "Failed to load review queue";
     return NextResponse.json(
       { success: false, error: message },
@@ -96,6 +113,12 @@ export async function POST(request: NextRequest) {
       data: result,
     });
   } catch (err: unknown) {
+    if (err instanceof AuthenticationRequiredError) {
+      return NextResponse.json({ success: false, error: err.message }, { status: 401 });
+    }
+    if (err instanceof WorkspaceAccessError || err instanceof UnauthorizedRoleError) {
+      return NextResponse.json({ success: false, error: err.message }, { status: 403 });
+    }
     const message = err instanceof Error ? err.message : "Failed to record review decision";
     const status = message.includes("Authentication required") || message.includes("authentication failure")
       ? 401

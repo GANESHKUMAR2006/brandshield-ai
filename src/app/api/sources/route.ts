@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { resolveServerSession, canReviewClaims, AuthenticationRequiredError } from "@/lib/auth/server-session";
+import {
+  resolveServerSession,
+  canReviewClaims,
+  AuthenticationRequiredError,
+  WorkspaceAccessError,
+  UnauthorizedRoleError,
+} from "@/lib/auth/server-session";
 import { query, withTransaction } from "@/lib/db/server-db";
 import { AuditService } from "@/lib/audit/audit-service";
 
@@ -138,6 +144,18 @@ export async function GET() {
       },
     });
   } catch (error) {
+    if (error instanceof AuthenticationRequiredError) {
+      return NextResponse.json(
+        { success: false, error: "Authentication required", details: error.message },
+        { status: 401 }
+      );
+    }
+    if (error instanceof WorkspaceAccessError || error instanceof UnauthorizedRoleError) {
+      return NextResponse.json(
+        { success: false, error: "Forbidden", details: error.message },
+        { status: 403 }
+      );
+    }
     const message = error instanceof Error ? error.message : "Failed to retrieve source library data";
     return NextResponse.json(
       { success: false, error: "Database error retrieving source library", details: message },
@@ -343,6 +361,9 @@ export async function POST(request: NextRequest) {
   } catch (err: unknown) {
     if (err instanceof AuthenticationRequiredError) {
       return NextResponse.json({ success: false, error: "Authentication required", details: err.message }, { status: 401 });
+    }
+    if (err instanceof WorkspaceAccessError || err instanceof UnauthorizedRoleError) {
+      return NextResponse.json({ success: false, error: "Forbidden", details: err.message }, { status: 403 });
     }
     const message = err instanceof Error ? err.message : "Failed to execute source document action";
     return NextResponse.json({ success: false, error: message }, { status: 400 });

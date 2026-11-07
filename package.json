@@ -21,7 +21,8 @@
     "test:phase10d": "npx tsx scripts/phase10d-offset-correction-test.ts",
     "test:phase15": "npx tsx scripts/phase15-reliability-test.ts",
     "test:verification": "npx tsx --env-file=.env.local scripts/phase5-comprehensive-test.ts",
-    "db:seed": "node --env-file=.env.local scripts/migrate-and-seed.js"
+    "db:seed": "node --env-file=.env.local scripts/migrate-and-seed.js",
+    "db:seed:auth": "node --env-file=.env.local scripts/seed-production-auth.js"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",
