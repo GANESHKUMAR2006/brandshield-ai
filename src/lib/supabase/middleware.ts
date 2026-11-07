@@ -50,9 +50,9 @@ export async function updateSession(request: NextRequest) {
   // Public paths that never require authentication
   const isPublicPath =
     pathname === "/login" ||
+    pathname === "/forgot-password" ||
     pathname.startsWith("/api/health") ||
-    pathname.startsWith("/api/auth/login") ||
-    pathname.startsWith("/api/auth/logout");
+    pathname.startsWith("/api/auth/");
 
   // API routes should never receive 307 redirects to HTML login pages;
   // let route handlers execute and return proper HTTP 401/403 JSON payloads.
