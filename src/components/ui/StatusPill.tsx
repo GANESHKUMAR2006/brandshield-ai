@@ -58,13 +58,13 @@ export function StatusPill({ status, className }: StatusPillProps) {
       <span
         className={`w-1.5 h-1.5 rounded-full mr-1.5 ${
           config.variant === "success"
-            ? "bg-emerald-500"
+            ? "bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.6)]"
             : config.variant === "warning"
-            ? "bg-amber-500"
+            ? "bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.6)]"
             : config.variant === "danger"
-            ? "bg-rose-500"
+            ? "bg-rose-400 shadow-[0_0_6px_rgba(251,113,133,0.6)]"
             : config.variant === "indigo"
-            ? "bg-indigo-500"
+            ? "bg-violet-400 shadow-[0_0_6px_rgba(167,139,250,0.6)]"
             : "bg-slate-400"
         }`}
       />

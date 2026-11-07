@@ -1,97 +1,183 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { SITE_CONFIG, DEMO_WORKSPACE, CURRENT_USER } from "@/config/site";
-import { BrandShieldLogo, BellIcon, MenuIcon, BuildingIcon } from "@/components/ui/Icons";
+import { BrandShieldLogo } from "@/components/ui/Icons";
+import { SystemHealthModal } from "@/components/system/SystemHealthModal";
+import {
+  Menu,
+  Bell,
+  Search,
+  Building2,
+  Activity,
+  CheckCircle2,
+  AlertTriangle,
+  FileText,
+  X,
+} from "lucide-react";
 
 interface TopNavProps {
   onOpenMobileMenu: () => void;
 }
 
 export function TopNav({ onOpenMobileMenu }: TopNavProps) {
+  const router = useRouter();
   const [showNotifications, setShowNotifications] = useState(false);
+  const [healthModalOpen, setHealthModalOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
+
+  // Keyboard shortcut for search
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.key === "/" || (e.ctrlKey && e.key === "k")) && !["INPUT", "TEXTAREA"].includes((e.target as HTMLElement)?.tagName)) {
+        e.preventDefault();
+        const searchInput = document.getElementById("global-search-input");
+        searchInput?.focus();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
+  const handleSearchSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!searchQuery.trim()) return;
+    router.push(`/claims?q=${encodeURIComponent(searchQuery.trim())}`);
+  };
 
   return (
-    <header className="sticky top-0 z-30 flex items-center justify-between h-16 px-4 sm:px-6 bg-white/95 backdrop-blur-xs border-b border-slate-200/90 text-slate-900">
-      {/* Left side: Mobile Toggle & Mobile Logo */}
+    <header className="sticky top-0 z-30 flex items-center justify-between h-16 px-4 sm:px-6 bg-[#0B0F19]/80 backdrop-blur-md border-b border-slate-800/80 text-slate-100">
+      {/* Left side: Mobile Toggle & Mobile Logo & Desktop Breadcrumb */}
       <div className="flex items-center gap-3">
         <button
           type="button"
           onClick={onOpenMobileMenu}
-          className="lg:hidden p-2 -ml-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
+          className="lg:hidden p-2 -ml-2 text-slate-400 hover:text-white hover:bg-slate-800/60 rounded-lg transition-colors focus:outline-hidden focus:ring-2 focus:ring-violet-500"
           aria-label="Open sidebar navigation"
         >
-          <MenuIcon className="w-5 h-5" />
+          <Menu className="w-5 h-5" />
         </button>
 
         {/* Mobile Logo Brand */}
         <div className="flex lg:hidden items-center gap-2">
           <BrandShieldLogo className="w-6 h-6" />
-          <span className="font-semibold text-slate-900 text-sm tracking-tight">
+          <span className="font-bold text-white text-sm tracking-tight">
             {SITE_CONFIG.shortName}
           </span>
         </div>
 
         {/* Desktop Breadcrumb / Workspace Badge */}
-        <div className="hidden lg:flex items-center gap-2 text-xs">
-          <span className="flex items-center gap-1.5 px-2.5 py-1 bg-slate-100/80 border border-slate-200/70 rounded-md text-slate-700 font-medium">
-            <BuildingIcon className="w-3.5 h-3.5 text-slate-500" />
+        <div className="hidden lg:flex items-center gap-2.5 text-xs">
+          <span className="flex items-center gap-1.5 px-2.5 py-1 bg-slate-900/60 border border-slate-800 rounded-lg text-slate-300 font-medium">
+            <Building2 className="w-3.5 h-3.5 text-violet-400" />
             <span>Workspace:</span>
-            <strong className="text-slate-900 font-semibold">{DEMO_WORKSPACE.name}</strong>
+            <strong className="text-white font-semibold">{DEMO_WORKSPACE.name}</strong>
           </span>
-          <span className="text-slate-300">/</span>
-          <span className="text-slate-500 font-medium">Evidence-Linked Governance</span>
+          <span className="text-slate-600">/</span>
+          <span className="text-slate-400 font-medium flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
+            Evidence-Linked Governance
+          </span>
         </div>
       </div>
 
-      {/* Right side: Workspace, Notifications, User Profile */}
-      <div className="flex items-center gap-3 sm:gap-4">
-        {/* Organization pill (tablet/mobile visible) */}
-        <div className="flex lg:hidden items-center text-xs px-2 py-0.5 bg-slate-100 rounded border border-slate-200 text-slate-700 font-medium">
-          {DEMO_WORKSPACE.name}
-        </div>
+      {/* Center Search Input */}
+      <div className="hidden md:flex flex-1 max-w-md mx-6">
+        <form onSubmit={handleSearchSubmit} className="relative w-full">
+          <div className="relative flex items-center">
+            <Search className="absolute left-3 w-4 h-4 text-slate-400 pointer-events-none" />
+            <input
+              id="global-search-input"
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onFocus={() => setIsSearchFocused(true)}
+              onBlur={() => setIsSearchFocused(false)}
+              placeholder="Search claims, clinical trials, campaigns..."
+              className="w-full pl-9 pr-12 py-1.5 text-xs rounded-xl bg-slate-900/80 border border-slate-700/80 text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500 transition-all shadow-inner"
+            />
+            <div className="absolute right-2.5 flex items-center gap-1">
+              <kbd className="hidden sm:inline-block px-1.5 py-0.5 text-[10px] font-semibold text-slate-400 bg-slate-800 border border-slate-700 rounded shadow-xs">
+                /
+              </kbd>
+            </div>
+          </div>
+        </form>
+      </div>
+
+      {/* Right side: Health Diagnostics, Notifications, User Profile */}
+      <div className="flex items-center gap-2.5 sm:gap-3.5">
+        {/* System Health Diagnostic Pill */}
+        <button
+          type="button"
+          onClick={() => setHealthModalOpen(true)}
+          className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-lg bg-emerald-950/50 text-emerald-300 border border-emerald-800/60 hover:bg-emerald-900/40 font-medium transition-all cursor-pointer shadow-xs"
+          title="System Health Diagnostics"
+        >
+          <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_#34d399] animate-pulse" />
+          <Activity className="w-3.5 h-3.5 text-emerald-400" />
+          <span>Health Diagnostics</span>
+        </button>
 
         {/* Notification Bell */}
         <div className="relative">
           <button
             type="button"
             onClick={() => setShowNotifications(!showNotifications)}
-            className="relative p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
+            className="relative p-2 text-slate-400 hover:text-white hover:bg-slate-800/60 rounded-lg transition-colors focus:outline-hidden focus:ring-2 focus:ring-violet-500 cursor-pointer"
             aria-label="Notifications"
           >
-            <BellIcon className="w-5 h-5" />
+            <Bell className="w-4.5 h-4.5" />
             <span className="absolute top-1.5 right-1.5 flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75" />
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-indigo-600" />
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-violet-400 opacity-75" />
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-violet-500" />
             </span>
           </button>
 
-          {/* Simple Dropdown Popover */}
+          {/* Dark Glass Dropdown Popover */}
           {showNotifications && (
             <div
-              className="absolute right-0 mt-2 w-80 bg-white border border-slate-200 rounded-xl shadow-lg p-3 z-50 text-xs"
+              className="absolute right-0 mt-2 w-80 bg-slate-900/95 backdrop-blur-xl border border-slate-700/80 rounded-xl shadow-2xl p-3.5 z-50 text-xs"
               role="dialog"
               aria-label="Notifications popover"
             >
-              <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-100 font-semibold text-slate-900">
-                <span>Recent System Alerts</span>
-                <span className="text-[10px] text-indigo-600 font-medium">3 unread</span>
+              <div className="flex items-center justify-between pb-2.5 mb-2.5 border-b border-slate-800 font-semibold text-white">
+                <span className="flex items-center gap-1.5">
+                  <Bell className="w-3.5 h-3.5 text-violet-400" />
+                  System Compliance Alerts
+                </span>
+                <span className="text-[10px] text-violet-300 bg-violet-950/80 border border-violet-800/60 px-1.5 py-0.5 rounded font-medium">
+                  3 unread
+                </span>
               </div>
-              <div className="space-y-2 text-slate-600">
-                <div className="p-2 rounded-md bg-amber-50/60 border border-amber-100">
-                  <p className="font-medium text-amber-900 text-[11px]">
-                    Claim flagged in Q3 Radiance Serum
-                  </p>
-                  <p className="text-[10px] text-amber-700 mt-0.5">
-                    Requires clinical dossier re-check.
+              <div className="space-y-2">
+                <div className="p-2.5 rounded-lg bg-amber-950/30 border border-amber-800/40">
+                  <div className="flex items-center gap-1.5 text-amber-300 font-semibold text-[11px]">
+                    <AlertTriangle className="w-3 h-3 text-amber-400" />
+                    <span>Flagged claim in Q3 Radiance Serum</span>
+                  </div>
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    Discrepancy detected: &ldquo;100% fine lines removed&rdquo; exceeds clinical Dossier DG-CT-2026-08 (88%).
                   </p>
                 </div>
-                <div className="p-2 rounded-md bg-slate-50 border border-slate-100">
-                  <p className="font-medium text-slate-800 text-[11px]">
-                    Source Document Index Updated
+                <div className="p-2.5 rounded-lg bg-emerald-950/30 border border-emerald-800/40">
+                  <div className="flex items-center gap-1.5 text-emerald-300 font-semibold text-[11px]">
+                    <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                    <span>Dossier Indexed & Grounded</span>
+                  </div>
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    DG-CT-2026-08 chunked into pgvector embeddings.
                   </p>
-                  <p className="text-[10px] text-slate-500 mt-0.5">
-                    DG-CT-2026-08 available for claims matching.
+                </div>
+                <div className="p-2.5 rounded-lg bg-slate-800/40 border border-slate-700/60">
+                  <div className="flex items-center gap-1.5 text-slate-300 font-semibold text-[11px]">
+                    <FileText className="w-3 h-3 text-cyan-400" />
+                    <span>Publication Gate Active</span>
+                  </div>
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    Unverified marketing claims safely blocked from publishing.
                   </p>
                 </div>
               </div>
@@ -99,21 +185,23 @@ export function TopNav({ onOpenMobileMenu }: TopNavProps) {
           )}
         </div>
 
-        {/* User Profile Placeholder */}
-        <div className="flex items-center gap-2.5 pl-2 sm:pl-3 border-l border-slate-200">
-          <div className="w-8 h-8 rounded-full bg-indigo-600 text-white flex items-center justify-center text-xs font-semibold tracking-wider shadow-2xs">
+        {/* User Profile */}
+        <div className="flex items-center gap-2.5 pl-2 sm:pl-3 border-l border-slate-800">
+          <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-violet-600 to-indigo-600 text-white flex items-center justify-center text-xs font-bold tracking-wider shadow-[0_0_10px_rgba(139,92,246,0.3)] border border-violet-400/30">
             {CURRENT_USER.initials}
           </div>
           <div className="hidden md:flex flex-col text-left">
-            <span className="text-xs font-semibold text-slate-900 leading-tight">
+            <span className="text-xs font-semibold text-white leading-tight">
               {CURRENT_USER.name}
             </span>
-            <span className="text-[10px] text-slate-500 truncate max-w-[140px]">
+            <span className="text-[10px] text-slate-400 truncate max-w-[130px]">
               {CURRENT_USER.role}
             </span>
           </div>
         </div>
       </div>
+
+      <SystemHealthModal isOpen={healthModalOpen} onClose={() => setHealthModalOpen(false)} />
     </header>
   );
 }

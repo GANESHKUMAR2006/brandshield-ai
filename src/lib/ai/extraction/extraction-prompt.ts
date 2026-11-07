@@ -1,17 +1,18 @@
 /**
  * BrandShield AI — Extraction Prompt Engineering
  * Phase 4: AI-Powered Marketing Claim Extraction Engine
+ * Phase 10D: Deterministic Claim Offset Correction
  *
  * System and user prompt construction for extracting factual assertions from marketing copy.
  */
 
 import { ExtractionPromptContext } from "../providers/provider-interface";
 
-export const EXTRACTION_PROMPT_VERSION = "1.0.0";
+export const EXTRACTION_PROMPT_VERSION = "1.1.0";
 
 /**
  * System prompt defining the strict extraction role, JSON output format,
- * offset conventions, and safety guidelines.
+ * claim classification, and safety guidelines.
  */
 export const EXTRACTION_SYSTEM_PROMPT = `You are BrandShield AI's high-precision Marketing Claim Extraction Engine.
 Your sole mission is to identify, isolate, and extract individual factual and promotional assertions from marketing content.
@@ -19,10 +20,7 @@ Your sole mission is to identify, isolate, and extract individual factual and pr
 CRITICAL DIRECTIVES:
 1. DO NOT EVALUATE TRUTH: Never determine whether a claim is true, substantiated, exaggerated, or false. Verification occurs in a separate stage. Only extract what is asserted in the text.
 2. VERBATIM SUBSTRING FIDELITY: Each claim's "claim_text" must be an EXACT, character-for-character substring of the provided marketing text. Do not correct typos, paraphrase, or rephrase.
-3. JAVASCRIPT UTF-16 OFFSETS: For every extracted claim, you must compute the exact zero-based character indices in the input text:
-   - "text_start": index where the substring begins (inclusive).
-   - "text_end": index where the substring ends (exclusive).
-   The invariant: content.slice(text_start, text_end) === claim_text MUST HOLD EXACTLY.
+3. DETERMINISTIC OFFSETS: Character offsets are calculated deterministically by the system; do NOT attempt character arithmetic. Focus strictly on isolating the exact verbatim substring for "claim_text".
 4. ATOMIC GRANULARITY: Separate distinct factual claims even if they appear in the same sentence. For example:
    "Contains 10% Vitamin C at only ₹1,999" contains TWO distinct claims:
    - Claim 1: "Contains 10% Vitamin C" (type: "product_attribute")
@@ -61,8 +59,6 @@ You must respond with valid JSON adhering to this schema:
     {
       "claim_text": string,
       "claim_type": "price" | "discount" | "product_attribute" | "efficacy" | "guarantee" | "comparative" | "clinical" | "availability" | "promotional" | "other",
-      "text_start": number,
-      "text_end": number,
       "product_hint": string | null,
       "entities": { ... },
       "extraction_confidence": number (between 0.00 and 1.00)

@@ -5,9 +5,20 @@ import { LiveClaimRecord, verifyClaim, fetchClaimDetail, submitReviewDecision, d
 import { Button } from "@/components/ui/Button";
 import { StatusPill } from "@/components/ui/StatusPill";
 import { Badge } from "@/components/ui/Badge";
-import { CloseIcon, SparklesIcon, CheckCircleIcon, AlertCircleIcon } from "@/components/ui/Icons";
 import { formatPercent, formatDateTime } from "@/lib/utils/formatters";
 import { EscalationCategory } from "@/types";
+import { ClaimLifecycleStepper } from "@/components/claims/ClaimLifecycleStepper";
+import {
+  X,
+  Sparkles,
+  CheckCircle2,
+  AlertTriangle,
+  FileCheck2,
+  Layers,
+  ArrowRight,
+  ShieldCheck,
+  Building2,
+} from "lucide-react";
 
 interface ClaimDetailModalProps {
   claim: LiveClaimRecord | null;
@@ -167,22 +178,22 @@ function ClaimDetailModalInner({
     : [];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#090D16]/80 backdrop-blur-md animate-in fade-in duration-200">
       <div
-        className="w-full max-w-2xl bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[90vh]"
+        className="w-full max-w-2xl bg-[#0B0F19] rounded-2xl shadow-2xl border border-slate-700/80 overflow-hidden flex flex-col max-h-[90vh] text-slate-100"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="p-6 border-b border-slate-100 flex items-start justify-between bg-slate-50/60">
+        <div className="p-6 border-b border-slate-800/80 flex items-start justify-between bg-slate-900/60">
           <div>
-            <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-              <span className="text-[10px] uppercase font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded">
+            <div className="flex items-center gap-2 mb-2 flex-wrap">
+              <span className="text-[10px] uppercase font-bold text-violet-300 bg-violet-950/70 border border-violet-800/60 px-2 py-0.5 rounded">
                 {claim.claim_type.replace(/_/g, " ")}
               </span>
               <StatusPill status={claim.verification_status} />
-              <span className="text-slate-300">·</span>
-              <span className="text-xs font-semibold text-slate-600 flex items-center gap-1">
-                <span className="text-slate-400 text-[10px] uppercase font-medium">Review:</span>
+              <span className="text-slate-600">·</span>
+              <span className="text-xs font-semibold text-slate-300 flex items-center gap-1">
+                <span className="text-slate-500 text-[10px] uppercase font-medium">Review:</span>
                 <StatusPill status={claim.review_status || "pending"} />
               </span>
               {claim.risk_level && (
@@ -191,58 +202,75 @@ function ClaimDetailModalInner({
                 </Badge>
               )}
               {claim.text_start !== null && claim.text_end !== null && (
-                <span className="text-[10px] font-mono text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
+                <span className="text-[10px] font-mono text-cyan-300 bg-cyan-950/60 border border-cyan-800/50 px-2 py-0.5 rounded">
                   UTF-16 Span: [{claim.text_start}..{claim.text_end}]
                 </span>
               )}
             </div>
-            <h2 className="text-lg font-bold text-slate-900">
+            <h2 className="text-lg font-bold text-white tracking-tight">
               Claim Ledger & Verification Record
             </h2>
-            <p className="text-xs text-slate-500 mt-0.5">
-              ID: <code className="font-mono text-[11px] text-slate-600">{claim.id}</code>
+            <p className="text-xs text-slate-400 mt-0.5">
+              ID: <code className="font-mono text-[11px] text-violet-400">{claim.id}</code>
             </p>
           </div>
 
           <button
             onClick={onClose}
-            className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+            className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
             aria-label="Close"
           >
-            <CloseIcon className="w-5 h-5" />
+            <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Action Alerts */}
         {error && (
-          <div className="mx-6 mt-4 p-3 rounded-lg bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center gap-2">
-            <AlertCircleIcon className="w-4 h-4 text-rose-600 shrink-0" />
+          <div className="mx-6 mt-4 p-3 rounded-xl bg-rose-950/40 border border-rose-800/60 text-rose-300 text-xs flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
             <span>{error}</span>
           </div>
         )}
         {successMsg && (
-          <div className="mx-6 mt-4 p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center gap-2">
-            <CheckCircleIcon className="w-4 h-4 text-emerald-600 shrink-0" />
+          <div className="mx-6 mt-4 p-3 rounded-xl bg-emerald-950/40 border border-emerald-800/60 text-emerald-300 text-xs flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
             <span>{successMsg}</span>
           </div>
         )}
 
         {/* Content Body */}
-        <div className="p-6 overflow-y-auto space-y-5 text-xs text-slate-700">
+        <div className="p-6 overflow-y-auto space-y-5 text-xs text-slate-300">
+          {/* 4-Stage Compliance Progression Stepper */}
+          <div className="p-4 bg-slate-900/70 rounded-xl border border-slate-800 shadow-inner">
+            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
+              Compliance Lifecycle Progression
+            </div>
+            <ClaimLifecycleStepper
+              compact={false}
+              textStart={claim.text_start}
+              textEnd={claim.text_end}
+              extractionConfidence={claim.extraction_confidence}
+              verificationStatus={claim.verification_status}
+              riskLevel={claim.risk_level}
+              reviewStatus={claim.review_status}
+            />
+          </div>
+
           {/* Verbatim Claim Statement */}
           <div>
-            <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block mb-1.5">
+            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1.5">
               Extracted Factual Assertion (Verbatim Substring)
             </label>
-            <div className="p-4 rounded-xl bg-indigo-50/60 border border-indigo-100 text-indigo-950 font-semibold text-sm leading-relaxed">
+            <div className="p-4 rounded-xl bg-violet-950/30 border border-violet-800/50 text-violet-100 font-semibold text-sm leading-relaxed shadow-inner">
               &ldquo;{claim.claim_text}&rdquo;
             </div>
           </div>
 
           {/* Verification Determination Box */}
-          <div className="p-4 rounded-xl border border-slate-200 bg-white space-y-3">
+          <div className="p-4 rounded-xl border border-slate-800 bg-slate-900/60 space-y-3 shadow-lg">
             <div className="flex items-center justify-between flex-wrap gap-2">
-              <span className="font-semibold text-slate-900 text-xs flex items-center gap-1.5">
+              <span className="font-bold text-white text-xs flex items-center gap-1.5">
+                <ShieldCheck className="w-4 h-4 text-cyan-400" />
                 <span>Deterministic Verification Determination</span>
               </span>
               <div className="flex items-center gap-2">
@@ -258,22 +286,22 @@ function ClaimDetailModalInner({
             </div>
 
             {claim.explanation ? (
-              <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 text-slate-800 leading-relaxed text-xs">
+              <div className="p-3 bg-slate-950/60 rounded-xl border border-slate-800 text-slate-200 leading-relaxed text-xs">
                 {claim.explanation}
               </div>
             ) : (
-              <div className="p-3 bg-slate-50/60 rounded-lg border border-dashed border-slate-200 text-slate-500 italic text-xs">
+              <div className="p-3 bg-slate-950/40 rounded-xl border border-dashed border-slate-800 text-slate-500 italic text-xs">
                 Awaiting deterministic verification against approved facts and clinical trials.
               </div>
             )}
 
             {/* Suggested Correction if present */}
             {claim.suggested_correction && (
-              <div className="p-3 bg-emerald-50/70 border border-emerald-200 rounded-lg">
-                <div className="text-[11px] font-semibold text-emerald-900 uppercase">
+              <div className="p-3 bg-emerald-950/30 border border-emerald-800/50 rounded-xl">
+                <div className="text-[10px] font-bold text-emerald-300 uppercase tracking-wider">
                   Suggested Defensible Correction:
                 </div>
-                <div className="font-semibold text-emerald-950 text-xs mt-0.5">
+                <div className="font-semibold text-emerald-200 text-xs mt-1">
                   &ldquo;{claim.suggested_correction}&rdquo;
                 </div>
               </div>
@@ -281,10 +309,10 @@ function ClaimDetailModalInner({
           </div>
 
           {/* Human Review & Governance Section */}
-          <div className="p-4 rounded-xl border border-slate-200 bg-white space-y-3">
+          <div className="p-4 rounded-xl border border-slate-800 bg-slate-900/60 space-y-3 shadow-lg">
             <div className="flex items-center justify-between flex-wrap gap-2">
               <div className="flex items-center gap-2">
-                <span className="font-semibold text-slate-900 text-xs">Human Compliance Review</span>
+                <span className="font-bold text-white text-xs">Human Compliance Review</span>
                 <StatusPill status={claim.review_status || "pending"} />
               </div>
 
@@ -298,22 +326,22 @@ function ClaimDetailModalInner({
             </div>
 
             {/* Review Status Metadata */}
-            <div className="grid grid-cols-2 gap-2 text-[11px] p-2.5 bg-slate-50 rounded-lg border border-slate-200">
+            <div className="grid grid-cols-2 gap-2 text-[11px] p-2.5 bg-slate-950/60 rounded-xl border border-slate-800">
               <div>
                 <span className="text-slate-400">Assigned Reviewer:</span>{" "}
-                <strong className="text-slate-700">{claim.assigned_reviewer || "Unassigned"}</strong>
+                <strong className="text-slate-200">{claim.assigned_reviewer || "Unassigned"}</strong>
               </div>
               <div>
                 <span className="text-slate-400">Last Reviewed:</span>{" "}
-                <span>{claim.last_reviewed_at ? formatDateTime(claim.last_reviewed_at) : "Pending"}</span>
+                <span className="text-slate-200">{claim.last_reviewed_at ? formatDateTime(claim.last_reviewed_at) : "Pending"}</span>
               </div>
               {claim.original_claim_id && (
-                <div className="col-span-2 text-indigo-700 font-mono text-[10px]">
+                <div className="col-span-2 text-violet-400 font-mono text-[10px]">
                   <span>Lineage Predecessor ID: {claim.original_claim_id}</span>
                 </div>
               )}
               {claim.review_notes && (
-                <div className="col-span-2 text-slate-600">
+                <div className="col-span-2 text-slate-300">
                   <span className="text-slate-400">Notes:</span> {claim.review_notes}
                 </div>
               )}
@@ -321,18 +349,18 @@ function ClaimDetailModalInner({
 
             {/* Interactive Review Decision Form */}
             {showReviewForm && (
-              <div className="p-3 bg-slate-50/80 rounded-xl border border-indigo-200 space-y-3">
-                <div className="flex items-center gap-2">
-                  <span className="font-semibold text-slate-700 text-xs">Action:</span>
+              <div className="p-3.5 bg-slate-950/80 rounded-xl border border-violet-800/50 space-y-3">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-semibold text-slate-300 text-xs">Action:</span>
                   {(["approved", "rejected", "escalated", "modified"] as const).map((dec) => (
                     <button
                       key={dec}
                       type="button"
                       onClick={() => setReviewDecision(dec)}
-                      className={`px-2.5 py-1 rounded text-xs font-medium capitalize cursor-pointer transition-colors ${
+                      className={`px-3 py-1 rounded-lg text-xs font-semibold capitalize cursor-pointer transition-all ${
                         reviewDecision === dec
-                          ? "bg-indigo-600 text-white"
-                          : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-100"
+                          ? "bg-violet-600 text-white shadow-md shadow-violet-950/60"
+                          : "bg-slate-900 border border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-white"
                       }`}
                     >
                       {dec}
@@ -343,7 +371,7 @@ function ClaimDetailModalInner({
                 {reviewDecision === "approved" &&
                   (claim.verification_status === "contradicted" || claim.risk_level === "high" || claim.risk_level === "critical") && (
                     <div>
-                      <label className="text-[11px] font-semibold text-rose-900 block mb-1">
+                      <label className="text-[11px] font-semibold text-rose-300 block mb-1">
                         Mandatory Policy Override Reason (Min 10 Characters):
                       </label>
                       <textarea
@@ -351,14 +379,14 @@ function ClaimDetailModalInner({
                         value={overrideReason}
                         onChange={(e) => setOverrideReason(e.target.value)}
                         placeholder="State regulatory justification or grandfather clause exception..."
-                        className="w-full p-2 rounded-lg border border-amber-300 bg-amber-50/40 text-xs focus:outline-indigo-500"
+                        className="w-full p-2 rounded-xl border border-amber-800/80 bg-amber-950/30 text-xs text-amber-200 placeholder-amber-400/50 focus:outline-none focus:border-amber-500"
                       />
                     </div>
                   )}
 
                 {reviewDecision === "modified" && (
                   <div>
-                    <label className="text-[11px] font-semibold text-slate-700 block mb-1">
+                    <label className="text-[11px] font-semibold text-slate-300 block mb-1">
                       Revised Defensible Claim Phrasing:
                     </label>
                     <textarea
@@ -366,20 +394,20 @@ function ClaimDetailModalInner({
                       value={modifiedText}
                       onChange={(e) => setModifiedText(e.target.value)}
                       placeholder="Revised phrasing..."
-                      className="w-full p-2 rounded-lg border border-slate-300 text-xs focus:outline-indigo-500 font-medium"
+                      className="w-full p-2 rounded-xl border border-slate-700 bg-slate-900 text-xs text-white focus:outline-none focus:border-violet-500 font-medium"
                     />
                   </div>
                 )}
 
                 {reviewDecision === "escalated" && (
                   <div>
-                    <label className="text-[11px] font-semibold text-slate-700 block mb-1">
+                    <label className="text-[11px] font-semibold text-slate-300 block mb-1">
                       Escalation Category:
                     </label>
                     <select
                       value={escalationCategory}
                       onChange={(e) => setEscalationCategory(e.target.value as EscalationCategory)}
-                      className="w-full p-1.5 rounded-lg border border-slate-300 text-xs capitalize"
+                      className="w-full p-2 rounded-xl border border-slate-700 bg-slate-900 text-xs text-white capitalize focus:outline-none focus:border-violet-500"
                     >
                       <option value="regulatory">Regulatory & FDA Compliance</option>
                       <option value="legal">Legal & IP Counsel</option>
@@ -392,7 +420,7 @@ function ClaimDetailModalInner({
                 )}
 
                 <div>
-                  <label className="text-[11px] font-semibold text-slate-700 block mb-1">
+                  <label className="text-[11px] font-semibold text-slate-300 block mb-1">
                     Reviewer Commentary:
                   </label>
                   <input
@@ -400,7 +428,7 @@ function ClaimDetailModalInner({
                     value={reviewComments}
                     onChange={(e) => setReviewComments(e.target.value)}
                     placeholder="Optional compliance comment..."
-                    className="w-full p-1.5 rounded-lg border border-slate-200 text-xs focus:outline-indigo-500"
+                    className="w-full p-2 rounded-xl border border-slate-700 bg-slate-900 text-xs text-white focus:outline-none focus:border-violet-500"
                   />
                 </div>
 
@@ -419,24 +447,24 @@ function ClaimDetailModalInner({
 
             {/* Decision History */}
             {claim.review_history && claim.review_history.length > 0 && (
-              <div className="pt-2 border-t border-slate-100">
-                <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">
+              <div className="pt-2 border-t border-slate-800">
+                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
                   Governance Decision Audit Trail ({claim.review_history.length})
                 </div>
                 <div className="space-y-2">
                   {claim.review_history.map((dec) => (
-                    <div key={dec.id} className="p-2.5 rounded-lg bg-slate-50 border border-slate-200 text-[11px]">
+                    <div key={dec.id} className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800 text-[11px]">
                       <div className="flex items-center justify-between mb-1">
                         <div className="flex items-center gap-1.5">
                           <StatusPill status={dec.decision} />
-                          <span className="font-semibold text-slate-700">By {dec.reviewer_id}</span>
-                          <span className="text-slate-400 text-[10px]">({dec.reviewer_role})</span>
+                          <span className="font-semibold text-slate-200">By {dec.reviewer_id}</span>
+                          <span className="text-slate-500 text-[10px]">({dec.reviewer_role})</span>
                         </div>
-                        <span className="text-slate-400">{formatDateTime(dec.created_at)}</span>
+                        <span className="text-slate-500">{formatDateTime(dec.created_at)}</span>
                       </div>
-                      {dec.comments && <p className="text-slate-600 mt-1">{dec.comments}</p>}
+                      {dec.comments && <p className="text-slate-300 mt-1">{dec.comments}</p>}
                       {dec.override_reason && (
-                        <p className="text-amber-800 bg-amber-50 p-1.5 rounded border border-amber-200 mt-1 font-sans">
+                        <p className="text-amber-300 bg-amber-950/40 p-1.5 rounded-lg border border-amber-800/50 mt-1 font-sans">
                           <strong>Override Policy:</strong> {dec.override_reason}
                         </p>
                       )}
@@ -450,12 +478,12 @@ function ClaimDetailModalInner({
           {/* Context Span Highlighter if content available */}
           {content && (
             <div>
-              <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block mb-1.5">
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1.5">
                 Original Text Context (Verified Offset Alignment)
               </label>
-              <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-700 leading-relaxed font-sans text-xs">
+              <div className="p-3.5 rounded-xl bg-slate-950/70 border border-slate-800 text-slate-300 leading-relaxed font-sans text-xs">
                 <span>{beforeText}</span>
-                <mark className="bg-amber-200/90 text-amber-950 px-1 py-0.5 rounded font-semibold border border-amber-300">
+                <mark className="bg-violet-900/60 text-violet-200 px-1 py-0.5 rounded font-semibold border border-violet-700/60">
                   {highlightedText}
                 </mark>
                 <span>{afterText}</span>
@@ -465,22 +493,22 @@ function ClaimDetailModalInner({
 
           {/* Metric Cards Row */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
-              <div className="text-[10px] text-slate-500 font-medium uppercase">AI Extraction Confidence</div>
-              <div className="text-base font-bold text-slate-900 mt-1">
+            <div className="p-3 bg-slate-900/60 rounded-xl border border-slate-800">
+              <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">AI Extraction Confidence</div>
+              <div className="text-base font-bold text-white mt-1">
                 {formatPercent(claim.extraction_confidence)}
               </div>
-              <div className="w-full bg-slate-200 h-1.5 rounded-full mt-1.5 overflow-hidden">
+              <div className="w-full bg-slate-800 h-1.5 rounded-full mt-1.5 overflow-hidden">
                 <div
-                  className="bg-indigo-600 h-full rounded-full"
+                  className="bg-gradient-to-r from-violet-500 to-cyan-400 h-full rounded-full shadow-[0_0_6px_rgba(6,182,212,0.4)]"
                   style={{ width: `${Math.round(claim.extraction_confidence * 100)}%` }}
                 />
               </div>
             </div>
 
-            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
-              <div className="text-[10px] text-slate-500 font-medium uppercase">Associated Product</div>
-              <div className="text-xs font-semibold text-slate-900 mt-1 truncate">
+            <div className="p-3 bg-slate-900/60 rounded-xl border border-slate-800">
+              <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Associated Product</div>
+              <div className="text-xs font-semibold text-white mt-1 truncate">
                 {claim.product_name || "Unassociated (General)"}
               </div>
               <div className="text-[10px] text-slate-400 mt-0.5">
@@ -488,9 +516,9 @@ function ClaimDetailModalInner({
               </div>
             </div>
 
-            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
-              <div className="text-[10px] text-slate-500 font-medium uppercase">Campaign Submission</div>
-              <div className="text-xs font-semibold text-slate-900 mt-1 truncate">
+            <div className="p-3 bg-slate-900/60 rounded-xl border border-slate-800">
+              <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Campaign Submission</div>
+              <div className="text-xs font-semibold text-white mt-1 truncate">
                 {claim.submission_title || "Direct Ingestion"}
               </div>
               <div className="text-[10px] text-slate-400 mt-0.5">
@@ -502,17 +530,17 @@ function ClaimDetailModalInner({
           {/* Extracted Entities */}
           {entities.length > 0 && (
             <div>
-              <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block mb-1.5">
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1.5">
                 Extracted Structured Entities
               </label>
-              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex flex-wrap gap-2">
+              <div className="p-3 bg-slate-900/60 rounded-xl border border-slate-800 flex flex-wrap gap-2">
                 {entities.map(([key, val]) => (
                   <div
                     key={key}
-                    className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-xs"
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-slate-950/80 border border-slate-800 rounded-lg text-xs"
                   >
-                    <span className="font-semibold text-slate-500">{key}:</span>
-                    <span className="font-mono text-indigo-700 font-medium">
+                    <span className="font-semibold text-slate-400">{key}:</span>
+                    <span className="font-mono text-cyan-300 font-medium">
                       {typeof val === "object" ? JSON.stringify(val) : String(val)}
                     </span>
                   </div>
@@ -521,10 +549,10 @@ function ClaimDetailModalInner({
             </div>
           )}
 
-          {/* Phase 7: Evidence Intelligence Dossiers & Approved Facts */}
+          {/* Evidence Intelligence Dossiers & Approved Facts */}
           <div>
             <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
-              <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
                 Evidence Intelligence Dossier ({claim.evidence?.length || 0})
               </label>
               <Button
@@ -549,24 +577,24 @@ function ClaimDetailModalInner({
                       key={ev.id}
                       className={`p-3.5 rounded-xl border text-xs transition-all ${
                         isContradiction
-                          ? "bg-rose-50/50 border-rose-200"
+                          ? "bg-rose-950/25 border-rose-800/50"
                           : isSupporting
-                          ? "bg-emerald-50/40 border-emerald-200"
-                          : "bg-slate-50/80 border-slate-200"
+                          ? "bg-emerald-950/20 border-emerald-800/50"
+                          : "bg-slate-900/60 border-slate-800"
                       }`}
                     >
                       {/* Top Bar: Source Doc, Version & Relevance Score */}
                       <div className="flex items-center justify-between flex-wrap gap-1.5 mb-2">
                         <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="font-bold text-slate-900 text-xs">
+                          <span className="font-bold text-white text-xs">
                             {ev.document_title || ev.fact_key || "Approved Clinical Dossier"}
                           </span>
                           {ev.version_number && (
-                            <span className="text-[10px] font-mono bg-white px-1.5 py-0.5 rounded border border-slate-200 text-slate-600 font-semibold">
+                            <span className="text-[10px] font-mono bg-slate-900 px-1.5 py-0.5 rounded border border-slate-700 text-slate-300 font-semibold">
                               v{ev.version_number}
                             </span>
                           )}
-                          <span className="text-[10px] uppercase font-semibold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100">
+                          <span className="text-[10px] uppercase font-semibold text-violet-300 bg-violet-950/80 px-1.5 py-0.5 rounded border border-violet-800/60">
                             {ev.evidence_type.replace(/_/g, " ")}
                           </span>
                         </div>
@@ -577,28 +605,28 @@ function ClaimDetailModalInner({
                           ) : (
                             <Badge variant="success" size="sm">VALID SOURCE</Badge>
                           )}
-                          <span className="font-mono text-[11px] font-bold text-slate-700 bg-white px-2 py-0.5 rounded border border-slate-200">
+                          <span className="font-mono text-[11px] font-bold text-cyan-300 bg-slate-900 px-2 py-0.5 rounded border border-slate-700">
                             Relevance: {formatPercent(ev.relevance_score)}
                           </span>
                         </div>
                       </div>
 
                       {/* Excerpt Body */}
-                      <blockquote className="p-2.5 bg-white/90 rounded-lg border border-slate-200/80 text-slate-800 leading-relaxed font-sans mb-2 text-xs">
+                      <blockquote className="p-3 bg-slate-950/80 rounded-xl border border-slate-800 text-slate-200 leading-relaxed font-sans mb-2 text-xs">
                         &ldquo;{ev.evidence_excerpt}&rdquo;
                       </blockquote>
 
                       {/* Footer: Provenance & Retrieval Rationale */}
-                      <div className="flex items-center justify-between text-[11px] text-slate-500 flex-wrap gap-1">
+                      <div className="flex items-center justify-between text-[11px] text-slate-400 flex-wrap gap-1">
                         <div className="flex items-center gap-2">
                           {ev.page_number && (
-                            <span>Page: <strong className="text-slate-700">{ev.page_number}</strong></span>
+                            <span>Page: <strong className="text-slate-200">{ev.page_number}</strong></span>
                           )}
                           {ev.section_reference && (
-                            <span>Section: <strong className="text-slate-700">{ev.section_reference}</strong></span>
+                            <span>Section: <strong className="text-slate-200">{ev.section_reference}</strong></span>
                           )}
                         </div>
-                        <div className="italic text-slate-400 text-[10px]">
+                        <div className="italic text-slate-500 text-[10px]">
                           {ev.retrieval_rationale || "Retrieved via pgvector hybrid semantic and lexical similarity"}
                         </div>
                       </div>
@@ -607,42 +635,42 @@ function ClaimDetailModalInner({
                 })}
               </div>
             ) : (
-              <div className="p-4 rounded-xl border border-dashed border-slate-200 bg-slate-50/50 text-center text-slate-500 text-xs">
+              <div className="p-4 rounded-xl border border-dashed border-slate-800 bg-slate-900/40 text-center text-slate-500 text-xs">
                 No evidence passages linked yet. Click &ldquo;Discover Evidence (RAG)&rdquo; to match approved clinical documents.
               </div>
             )}
           </div>
 
           {/* Provenance & LLM Run Information */}
-          <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 space-y-2">
-            <div className="flex items-center gap-2 font-semibold text-slate-900 text-xs">
-              <SparklesIcon className="w-4 h-4 text-indigo-600" />
+          <div className="p-4 rounded-xl bg-slate-950/60 border border-slate-800 space-y-2">
+            <div className="flex items-center gap-2 font-bold text-white text-xs">
+              <Sparkles className="w-4 h-4 text-violet-400" />
               <span>Engine Provenance Telemetry</span>
             </div>
-            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px] text-slate-600">
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px] text-slate-400">
               <div>
-                <span className="text-slate-400">Extraction Provider:</span>{" "}
-                <strong className="text-slate-800 uppercase">{claim.extraction_provider || "mock/local"}</strong>
+                <span className="text-slate-500">Extraction Provider:</span>{" "}
+                <strong className="text-slate-200 uppercase">{claim.extraction_provider || "mock/local"}</strong>
               </div>
               <div>
-                <span className="text-slate-400">Model:</span>{" "}
-                <code className="text-slate-800">{claim.extraction_model || "deterministic-v1"}</code>
+                <span className="text-slate-500">Model:</span>{" "}
+                <code className="text-slate-200">{claim.extraction_model || "deterministic-v1"}</code>
               </div>
               <div>
-                <span className="text-slate-400">Extracted At:</span>{" "}
-                <span>{formatDateTime(claim.created_at)}</span>
+                <span className="text-slate-500">Extracted At:</span>{" "}
+                <span className="text-slate-200">{formatDateTime(claim.created_at)}</span>
               </div>
               <div>
-                <span className="text-slate-400">Verified At:</span>{" "}
-                <span>{claim.verified_at ? formatDateTime(claim.verified_at) : "Pending verification"}</span>
+                <span className="text-slate-500">Verified At:</span>{" "}
+                <span className="text-slate-200">{claim.verified_at ? formatDateTime(claim.verified_at) : "Pending verification"}</span>
               </div>
             </div>
           </div>
         </div>
 
         {/* Footer */}
-        <div className="p-4 border-t border-slate-100 flex items-center justify-between bg-slate-50/50">
-          <div className="text-[11px] text-slate-400">
+        <div className="p-4 border-t border-slate-800/80 flex items-center justify-between bg-slate-950/60">
+          <div className="text-[11px] text-slate-500">
             BrandShield AI Claim Governance · Deterministic Rules Engine v1.0.0
           </div>
           <Button variant="outline" size="sm" onClick={onClose}>

@@ -9,6 +9,8 @@
 import { LLMProvider } from "./provider-interface";
 import { MockLLMProvider } from "./mock-provider";
 import { OpenAIProvider } from "./openai-provider";
+import { HuggingFaceProvider } from "./huggingface-provider";
+import { OllamaProvider } from "./ollama-provider";
 
 export function getConfiguredProvider(): LLMProvider {
   const provider = (process.env.LLM_PROVIDER || "").trim().toLowerCase();
@@ -16,6 +18,23 @@ export function getConfiguredProvider(): LLMProvider {
   // Explicit mock provider for automated testing and offline development
   if (provider === "mock") {
     return new MockLLMProvider();
+  }
+
+  // Ollama local provider
+  if (provider === "ollama") {
+    return new OllamaProvider();
+  }
+
+  // Hugging Face provider (OpenAI-compatible router endpoint)
+  if (provider === "huggingface" || (!provider && process.env.HF_TOKEN && !process.env.OPENAI_API_KEY)) {
+    const token = process.env.HF_TOKEN;
+    if (!token || token.startsWith("hf_placeholder") || token.includes("placeholder")) {
+      throw new Error(
+        "Hugging Face provider selected, but HF_TOKEN is missing or contains placeholder. " +
+          "Configure a valid token in .env.local or set LLM_PROVIDER=mock for automated testing."
+      );
+    }
+    return new HuggingFaceProvider();
   }
 
   // OpenAI provider
@@ -37,7 +56,6 @@ export function getConfiguredProvider(): LLMProvider {
 
   // Clear configuration error if unconfigured
   throw new Error(
-    "No valid LLM provider configured. Please set LLM_PROVIDER=openai and OPENAI_API_KEY in .env.local, " +
-      "or set LLM_PROVIDER=mock for deterministic test runs."
+    "No valid LLM provider configured. Please set LLM_PROVIDER=ollama (or huggingface, openai, mock) in .env.local."
   );
 }

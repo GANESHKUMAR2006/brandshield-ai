@@ -22,6 +22,41 @@ import { PolicyEvaluationResult } from "@/types";
 
 export const VERIFICATION_ENGINE_VERSION = "1.0.0";
 
+// Cached column flags to adapt transparently whether Phase 9 migration is applied or pending
+let cachedHasPhase9RunColumns: boolean | null = null;
+let cachedHasPhase9ClaimColumns: boolean | null = null;
+
+async function detectPhase9Columns(client: { query: (q: string, p?: unknown[]) => Promise<{ rows: unknown[] }> }) {
+  if (cachedHasPhase9RunColumns === null) {
+    try {
+      const res = await client.query(
+        `SELECT 1 FROM information_schema.columns 
+         WHERE table_name = 'verification_runs' AND column_name = 'policy_version_ids' LIMIT 1;`
+      );
+      cachedHasPhase9RunColumns = res.rows.length > 0;
+    } catch {
+      cachedHasPhase9RunColumns = false;
+    }
+  }
+
+  if (cachedHasPhase9ClaimColumns === null) {
+    try {
+      const res = await client.query(
+        `SELECT 1 FROM information_schema.columns 
+         WHERE table_name = 'claims' AND column_name = 'policy_compliance_status' LIMIT 1;`
+      );
+      cachedHasPhase9ClaimColumns = res.rows.length > 0;
+    } catch {
+      cachedHasPhase9ClaimColumns = false;
+    }
+  }
+
+  return {
+    hasRunColumns: cachedHasPhase9RunColumns,
+    hasClaimColumns: cachedHasPhase9ClaimColumns,
+  };
+}
+
 export class VerificationEngine {
   /**
    * Deterministically verifies a single active marketing claim.
@@ -114,30 +149,55 @@ export class VerificationEngine {
 
     // 6. Persist run, evidence links, updated claim status, policy metadata, and audit log in an atomic transaction
     const executionResult = await withTransaction(async (client) => {
+      const { hasRunColumns, hasClaimColumns } = await detectPhase9Columns(client);
+
       // A. Insert verification_runs record
-      const runRes = await client.query<{ id: string; created_at: string }>(
-        `INSERT INTO verification_runs (
-          claim_id,
-          engine_version,
-          verification_status,
-          risk_level,
-          explanation,
-          evidence_snapshot,
-          policy_version_ids,
-          policy_evaluation
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-        RETURNING id, created_at`,
-        [
-          context.claim.id,
-          VERIFICATION_ENGINE_VERSION,
-          finalStatus,
-          compositeRisk,
-          finalExplanation,
-          JSON.stringify(snapshot),
-          policyEvaluation.effectivePolicyVersions.map((v) => v.versionId),
-          JSON.stringify(policyEvaluation),
-        ]
-      );
+      let runRes: { rows: Array<{ id: string; created_at: string }> };
+      if (hasRunColumns) {
+        runRes = await client.query<{ id: string; created_at: string }>(
+          `INSERT INTO verification_runs (
+            claim_id,
+            engine_version,
+            verification_status,
+            risk_level,
+            explanation,
+            evidence_snapshot,
+            policy_version_ids,
+            policy_evaluation
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+          RETURNING id, created_at`,
+          [
+            context.claim.id,
+            VERIFICATION_ENGINE_VERSION,
+            finalStatus,
+            compositeRisk,
+            finalExplanation,
+            JSON.stringify(snapshot),
+            policyEvaluation.effectivePolicyVersions.map((v) => v.versionId),
+            JSON.stringify(policyEvaluation),
+          ]
+        );
+      } else {
+        runRes = await client.query<{ id: string; created_at: string }>(
+          `INSERT INTO verification_runs (
+            claim_id,
+            engine_version,
+            verification_status,
+            risk_level,
+            explanation,
+            evidence_snapshot
+          ) VALUES ($1, $2, $3, $4, $5, $6)
+          RETURNING id, created_at`,
+          [
+            context.claim.id,
+            VERIFICATION_ENGINE_VERSION,
+            finalStatus,
+            compositeRisk,
+            finalExplanation,
+            JSON.stringify(snapshot),
+          ]
+        );
+      }
       const runId = runRes.rows[0].id;
       const verifiedAt = runRes.rows[0].created_at;
 
@@ -164,35 +224,57 @@ export class VerificationEngine {
       }
 
       // C. Update claims table record with verification status, risk, and policy intelligence
-      await client.query(
-        `UPDATE claims
-         SET verification_status = $1,
-             risk_level = $2,
-             explanation = $3,
-             suggested_correction = $4,
-             evidence_sufficiency = $5,
-             verified_at = $6,
-             policy_compliance_status = $7,
-             mandatory_reviewer_role = $8,
-             required_evidence_types = $9,
-             triggered_policy_rules = $10,
-             updated_at = now()
-         WHERE id = $11`,
-        [
-          finalStatus,
-          compositeRisk,
-          finalExplanation,
-          ruleResult.suggestedCorrection || null,
-          sufficiencyCheck.sufficiency,
-          verifiedAt,
-          policyEvaluation.complianceStatus,
-          policyEvaluation.mandatoryReviewerRoles[0] || null,
-          policyEvaluation.requiredEvidenceTypes,
-          JSON.stringify(policyEvaluation.triggeredRules),
-          context.claim.id,
-        ]
-      );
-
+      if (hasClaimColumns) {
+        await client.query(
+          `UPDATE claims
+           SET verification_status = $1,
+               risk_level = $2,
+               explanation = $3,
+               suggested_correction = $4,
+               evidence_sufficiency = $5,
+               verified_at = $6,
+               policy_compliance_status = $7,
+               mandatory_reviewer_role = $8,
+               required_evidence_types = $9,
+               triggered_policy_rules = $10,
+               updated_at = now()
+           WHERE id = $11`,
+          [
+            finalStatus,
+            compositeRisk,
+            finalExplanation,
+            ruleResult.suggestedCorrection || null,
+            sufficiencyCheck.sufficiency,
+            verifiedAt,
+            policyEvaluation.complianceStatus,
+            policyEvaluation.mandatoryReviewerRoles[0] || null,
+            policyEvaluation.requiredEvidenceTypes,
+            JSON.stringify(policyEvaluation.triggeredRules),
+            context.claim.id,
+          ]
+        );
+      } else {
+        await client.query(
+          `UPDATE claims
+           SET verification_status = $1,
+               risk_level = $2,
+               explanation = $3,
+               suggested_correction = $4,
+               evidence_sufficiency = $5,
+               verified_at = $6,
+               updated_at = now()
+           WHERE id = $7`,
+          [
+            finalStatus,
+            compositeRisk,
+            finalExplanation,
+            ruleResult.suggestedCorrection || null,
+            sufficiencyCheck.sufficiency,
+            verifiedAt,
+            context.claim.id,
+          ]
+        );
+      }
       // D. Append immutable audit event
       await client.query(
         `INSERT INTO audit_events (

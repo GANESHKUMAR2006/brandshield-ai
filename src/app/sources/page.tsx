@@ -7,16 +7,22 @@ import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { StatusPill } from "@/components/ui/StatusPill";
 import {
-  FolderGit2Icon,
-  AlertCircleIcon,
-} from "@/components/ui/Icons";
-import {
   fetchSourcesData,
   SourcesResponseData,
   LiveSourceDocument,
 } from "@/lib/api-client";
 import { DocumentVersionModal } from "@/components/sources/DocumentVersionModal";
 import { formatDate } from "@/lib/utils/formatters";
+import {
+  FolderGit2,
+  AlertTriangle,
+  RefreshCw,
+  Search,
+  FileText,
+  Layers,
+  ArrowRight,
+  ExternalLink,
+} from "lucide-react";
 
 type TabKey = "documents" | "facts" | "products" | "promotions";
 
@@ -102,23 +108,24 @@ export default function SourcesPage() {
   return (
     <AppLayout>
       {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-2 border-b border-slate-200/80">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-2 border-b border-slate-800/80">
         <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900">
+          <div className="flex items-center gap-2.5">
+            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-white">
               Source Library & Ground Truth Vault
             </h1>
-            <span className="text-[11px] font-semibold px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200">
-              Live PostgreSQL
+            <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-violet-950/70 text-violet-300 border border-violet-800/60 shadow-[0_0_8px_rgba(139,92,246,0.3)]">
+              Live PostgreSQL 17
             </span>
           </div>
-          <p className="text-xs sm:text-sm text-slate-500 mt-1">
+          <p className="text-xs sm:text-sm text-slate-400 mt-1">
             Approved product facts, registered clinical dossiers, active promotions, and versioned substantiation evidence.
           </p>
         </div>
 
         <div className="flex items-center gap-2.5">
           <Button variant="outline" size="sm" onClick={loadSources} isLoading={isLoading}>
+            <RefreshCw className="w-3.5 h-3.5 mr-1" />
             Refresh Live Data
           </Button>
           <Button variant="primary" size="sm">
@@ -129,44 +136,44 @@ export default function SourcesPage() {
 
       {/* Top Level Summary Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <div className="p-4 bg-white rounded-xl border border-slate-200/80 shadow-2xs">
-          <div className="text-xs font-medium text-slate-500">Source Dossiers</div>
-          <div className="text-2xl font-bold text-slate-900 mt-1">
+        <div className="p-4 rounded-xl border border-slate-800/80 bg-slate-900/60 backdrop-blur-md shadow-lg">
+          <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Source Dossiers</div>
+          <div className="text-2xl sm:text-3xl font-extrabold text-white mt-1.5 tracking-tight">
             {isLoading ? "..." : data?.documents.length ?? 0}
           </div>
-          <div className="text-[11px] text-slate-400 mt-0.5">Versioned PDF studies</div>
+          <div className="text-[11px] text-slate-400 mt-1">Versioned PDF studies</div>
         </div>
 
-        <div className="p-4 bg-white rounded-xl border border-slate-200/80 shadow-2xs">
-          <div className="text-xs font-medium text-slate-500">Approved Facts</div>
-          <div className="text-2xl font-bold text-emerald-700 mt-1">
+        <div className="p-4 rounded-xl border border-slate-800/80 bg-slate-900/60 backdrop-blur-md shadow-lg">
+          <div className="text-xs font-semibold text-emerald-300 uppercase tracking-wider">Approved Facts</div>
+          <div className="text-2xl sm:text-3xl font-extrabold text-emerald-300 mt-1.5 tracking-tight">
             {isLoading ? "..." : data?.approvedFacts.length ?? 0}
           </div>
-          <div className="text-[11px] text-slate-400 mt-0.5">Ground truth assertions</div>
+          <div className="text-[11px] text-slate-400 mt-1">Ground truth assertions</div>
         </div>
 
-        <div className="p-4 bg-white rounded-xl border border-slate-200/80 shadow-2xs">
-          <div className="text-xs font-medium text-slate-500">Master Catalog SKUs</div>
-          <div className="text-2xl font-bold text-indigo-700 mt-1">
+        <div className="p-4 rounded-xl border border-slate-800/80 bg-slate-900/60 backdrop-blur-md shadow-lg">
+          <div className="text-xs font-semibold text-violet-300 uppercase tracking-wider">Master Catalog SKUs</div>
+          <div className="text-2xl sm:text-3xl font-extrabold text-violet-300 mt-1.5 tracking-tight">
             {isLoading ? "..." : data?.products.length ?? 0}
           </div>
-          <div className="text-[11px] text-slate-400 mt-0.5">DermaGlow formulations</div>
+          <div className="text-[11px] text-slate-400 mt-1">DermaGlow formulations</div>
         </div>
 
-        <div className="p-4 bg-white rounded-xl border border-slate-200/80 shadow-2xs">
-          <div className="text-xs font-medium text-slate-500">Active Promotions</div>
-          <div className="text-2xl font-bold text-amber-700 mt-1">
+        <div className="p-4 rounded-xl border border-slate-800/80 bg-slate-900/60 backdrop-blur-md shadow-lg">
+          <div className="text-xs font-semibold text-amber-300 uppercase tracking-wider">Active Promotions</div>
+          <div className="text-2xl sm:text-3xl font-extrabold text-amber-300 mt-1.5 tracking-tight">
             {isLoading ? "..." : data?.promotions.filter((p) => p.is_currently_active).length ?? 0}
           </div>
-          <div className="text-[11px] text-slate-400 mt-0.5">Price exception rules</div>
+          <div className="text-[11px] text-slate-400 mt-1">Price exception rules</div>
         </div>
       </div>
 
       {/* Error Banner */}
       {error && (
-        <div className="p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center justify-between">
+        <div className="p-4 rounded-xl bg-rose-950/40 border border-rose-800/60 text-rose-300 text-xs flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <AlertCircleIcon className="w-4 h-4 text-rose-600 shrink-0" />
+            <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
             <span>{error}</span>
           </div>
           <Button variant="outline" size="sm" onClick={loadSources}>
@@ -176,45 +183,45 @@ export default function SourcesPage() {
       )}
 
       {/* Interactive Tabs & Search Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-2">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-1">
         {/* Navigation Tabs */}
-        <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-lg border border-slate-200 text-xs font-medium overflow-x-auto">
+        <div className="flex items-center gap-1 p-1 bg-slate-900/80 rounded-xl border border-slate-800 text-xs font-medium overflow-x-auto shadow-inner">
           <button
             onClick={() => setActiveTab("documents")}
-            className={`px-3 py-1.5 rounded-md transition-colors whitespace-nowrap cursor-pointer ${
+            className={`px-3 py-1.5 rounded-lg transition-all whitespace-nowrap cursor-pointer text-xs ${
               activeTab === "documents"
-                ? "bg-white text-slate-900 font-semibold shadow-2xs"
-                : "text-slate-600 hover:text-slate-900"
+                ? "bg-violet-600 text-white font-semibold shadow-md shadow-violet-950/50"
+                : "text-slate-400 hover:text-white hover:bg-slate-800/60"
             }`}
           >
             Source Documents ({data?.documents.length ?? 0})
           </button>
           <button
             onClick={() => setActiveTab("facts")}
-            className={`px-3 py-1.5 rounded-md transition-colors whitespace-nowrap cursor-pointer ${
+            className={`px-3 py-1.5 rounded-lg transition-all whitespace-nowrap cursor-pointer text-xs ${
               activeTab === "facts"
-                ? "bg-white text-slate-900 font-semibold shadow-2xs"
-                : "text-slate-600 hover:text-slate-900"
+                ? "bg-violet-600 text-white font-semibold shadow-md shadow-violet-950/50"
+                : "text-slate-400 hover:text-white hover:bg-slate-800/60"
             }`}
           >
             Approved Facts ({data?.approvedFacts.length ?? 0})
           </button>
           <button
             onClick={() => setActiveTab("products")}
-            className={`px-3 py-1.5 rounded-md transition-colors whitespace-nowrap cursor-pointer ${
+            className={`px-3 py-1.5 rounded-lg transition-all whitespace-nowrap cursor-pointer text-xs ${
               activeTab === "products"
-                ? "bg-white text-slate-900 font-semibold shadow-2xs"
-                : "text-slate-600 hover:text-slate-900"
+                ? "bg-violet-600 text-white font-semibold shadow-md shadow-violet-950/50"
+                : "text-slate-400 hover:text-white hover:bg-slate-800/60"
             }`}
           >
             Product Catalog ({data?.products.length ?? 0})
           </button>
           <button
             onClick={() => setActiveTab("promotions")}
-            className={`px-3 py-1.5 rounded-md transition-colors whitespace-nowrap cursor-pointer ${
+            className={`px-3 py-1.5 rounded-lg transition-all whitespace-nowrap cursor-pointer text-xs ${
               activeTab === "promotions"
-                ? "bg-white text-slate-900 font-semibold shadow-2xs"
-                : "text-slate-600 hover:text-slate-900"
+                ? "bg-violet-600 text-white font-semibold shadow-md shadow-violet-950/50"
+                : "text-slate-400 hover:text-white hover:bg-slate-800/60"
             }`}
           >
             Promotions ({data?.promotions.length ?? 0})
@@ -222,40 +229,41 @@ export default function SourcesPage() {
         </div>
 
         {/* Search Input */}
-        <div className="w-full sm:w-64">
+        <div className="w-full sm:w-72 relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
           <input
             type="text"
             placeholder="Search records..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg text-slate-800 placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
+            className="w-full pl-9 pr-3 py-1.5 text-xs bg-slate-900 border border-slate-700/80 rounded-xl text-slate-100 placeholder-slate-500 focus:outline-none focus:border-violet-500 shadow-inner"
           />
         </div>
       </div>
 
       {/* Loading Skeleton */}
       {isLoading && (
-        <Card className="p-8 text-center text-xs text-slate-500">
-          <div className="w-6 h-6 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+        <div className="p-8 rounded-xl border border-slate-800 bg-slate-900/60 text-center text-xs text-slate-400">
+          <div className="w-6 h-6 border-2 border-violet-500 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
           <span>Loading live evidence records from Supabase PostgreSQL...</span>
-        </Card>
+        </div>
       )}
 
       {/* TAB 1: SOURCE DOCUMENTS */}
       {!isLoading && activeTab === "documents" && (
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-3">
+        <div className="rounded-xl border border-slate-800/80 bg-slate-900/60 backdrop-blur-md shadow-xl overflow-hidden">
+          <div className="p-5 border-b border-slate-800/80 flex flex-row items-center justify-between">
             <div>
-              <CardTitle>Clinical Dossiers & Substantiation Studies</CardTitle>
-              <CardDescription>
-                Live versioned scientific evidence and regulatory dossier repository
-              </CardDescription>
+              <h2 className="text-base font-bold text-white tracking-tight">Clinical Dossiers & Substantiation Studies</h2>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Live versioned scientific evidence and regulatory dossier repository.
+              </p>
             </div>
-            <span className="text-[11px] font-medium text-slate-400">
+            <span className="text-[11px] font-semibold text-violet-300 bg-violet-950/60 border border-violet-800/60 px-2.5 py-0.5 rounded-full">
               {filteredDocs.length} Document(s)
             </span>
-          </CardHeader>
-          <CardContent className="p-0">
+          </div>
+          <div className="p-0">
             {filteredDocs.length === 0 ? (
               <div className="p-8 text-center text-xs text-slate-400">
                 No source documents matching &ldquo;{searchQuery}&rdquo;.
@@ -264,7 +272,7 @@ export default function SourcesPage() {
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs border-collapse">
                   <thead>
-                    <tr className="border-b border-slate-100 bg-slate-50/70 text-slate-500 uppercase font-semibold text-[11px] tracking-wider">
+                    <tr className="border-b border-slate-800 bg-slate-950/50 text-slate-400 uppercase font-semibold text-[10px] tracking-wider">
                       <th className="py-3 px-4 sm:px-6">Document Title</th>
                       <th className="py-3 px-4">Type</th>
                       <th className="py-3 px-4">Approved Version</th>
@@ -273,21 +281,21 @@ export default function SourcesPage() {
                       <th className="py-3 px-4 sm:px-6 text-right">Actions</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100 text-slate-700">
+                  <tbody className="divide-y divide-slate-800/60 text-slate-200">
                     {filteredDocs.map((doc) => (
-                      <tr key={doc.id} className="hover:bg-slate-50/80 transition-colors">
+                      <tr key={doc.id} className="hover:bg-slate-800/40 transition-colors">
                         <td className="py-3.5 px-4 sm:px-6">
                           <div className="flex items-center gap-2.5">
-                            <div className="p-1.5 bg-indigo-50 border border-indigo-100 text-indigo-700 rounded-md shrink-0">
-                              <FolderGit2Icon className="w-4 h-4" />
+                            <div className="p-2 bg-violet-950/80 border border-violet-800/60 text-violet-400 rounded-lg shrink-0">
+                              <FolderGit2 className="w-4 h-4" />
                             </div>
                             <div className="min-w-0">
-                              <div className="font-semibold text-slate-900 line-clamp-1">
+                              <div className="font-semibold text-white line-clamp-1">
                                 {doc.title}
                               </div>
                               <div className="text-[11px] text-slate-400 mt-0.5 flex items-center gap-2">
                                 <span>ID: {doc.id.substring(0, 8)}...</span>
-                                <span className="text-emerald-700 font-medium bg-emerald-50 px-1.5 rounded">
+                                <span className="text-emerald-300 font-medium bg-emerald-950/60 border border-emerald-800/60 px-1.5 rounded text-[10px]">
                                   Seeded Ground Truth
                                 </span>
                               </div>
@@ -295,13 +303,13 @@ export default function SourcesPage() {
                           </div>
                         </td>
                         <td className="py-3.5 px-4">
-                          <span className="capitalize px-2 py-0.5 rounded bg-slate-100 text-slate-700 font-medium text-[11px]">
+                          <span className="capitalize px-2 py-0.5 rounded-md bg-slate-800/80 border border-slate-700/60 text-slate-300 font-medium text-[11px]">
                             {doc.document_type.replace(/_/g, " ")}
                           </span>
                         </td>
                         <td className="py-3.5 px-4">
                           <div className="flex items-center gap-1.5">
-                            <span className="font-semibold text-slate-900">
+                            <span className="font-semibold text-white">
                               v{doc.current_version_number ?? 1}
                             </span>
                             <Badge variant={doc.is_expired ? "warning" : "success"} size="sm">
@@ -309,10 +317,10 @@ export default function SourcesPage() {
                             </Badge>
                           </div>
                         </td>
-                        <td className="py-3.5 px-4 text-slate-600">
+                        <td className="py-3.5 px-4 text-slate-400">
                           {doc.approval_date ? formatDate(doc.approval_date) : "Pending"}
                         </td>
-                        <td className="py-3.5 px-4 text-slate-600">
+                        <td className="py-3.5 px-4 text-slate-400">
                           {doc.valid_from ? formatDate(doc.valid_from) : "—"} to{" "}
                           {doc.valid_until ? formatDate(doc.valid_until) : "Indefinite"}
                         </td>
@@ -331,25 +339,25 @@ export default function SourcesPage() {
                 </table>
               </div>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       )}
 
       {/* TAB 2: APPROVED FACTS */}
       {!isLoading && activeTab === "facts" && (
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-3">
+        <div className="rounded-xl border border-slate-800/80 bg-slate-900/60 backdrop-blur-md shadow-xl overflow-hidden">
+          <div className="p-5 border-b border-slate-800/80 flex flex-row items-center justify-between">
             <div>
-              <CardTitle>Registered Approved Product Facts</CardTitle>
-              <CardDescription>
-                Ground-truth formulation parameters, safety profiles, and pricing catalogue
-              </CardDescription>
+              <h2 className="text-base font-bold text-white tracking-tight">Registered Approved Product Facts</h2>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Ground-truth formulation parameters, safety profiles, and pricing catalogue.
+              </p>
             </div>
-            <span className="text-[11px] font-medium text-slate-400">
+            <span className="text-[11px] font-semibold text-violet-300 bg-violet-950/60 border border-violet-800/60 px-2.5 py-0.5 rounded-full">
               {filteredFacts.length} Fact(s)
             </span>
-          </CardHeader>
-          <CardContent className="p-0">
+          </div>
+          <div className="p-0">
             {filteredFacts.length === 0 ? (
               <div className="p-8 text-center text-xs text-slate-400">
                 No approved facts matching &ldquo;{searchQuery}&rdquo;.
@@ -358,7 +366,7 @@ export default function SourcesPage() {
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs border-collapse">
                   <thead>
-                    <tr className="border-b border-slate-100 bg-slate-50/70 text-slate-500 uppercase font-semibold text-[11px] tracking-wider">
+                    <tr className="border-b border-slate-800 bg-slate-950/50 text-slate-400 uppercase font-semibold text-[10px] tracking-wider">
                       <th className="py-3 px-4 sm:px-6">Fact Key</th>
                       <th className="py-3 px-4">Associated Product</th>
                       <th className="py-3 px-4">Approved Fact Value</th>
@@ -367,21 +375,21 @@ export default function SourcesPage() {
                       <th className="py-3 px-4 sm:px-6">Source Dossier</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100 text-slate-700">
+                  <tbody className="divide-y divide-slate-800/60 text-slate-200">
                     {filteredFacts.map((fact) => (
-                      <tr key={fact.id} className="hover:bg-slate-50/80 transition-colors">
-                        <td className="py-3.5 px-4 sm:px-6 font-mono font-semibold text-indigo-700">
+                      <tr key={fact.id} className="hover:bg-slate-800/40 transition-colors">
+                        <td className="py-3.5 px-4 sm:px-6 font-mono font-semibold text-violet-300">
                           {fact.fact_key}
                           <div className="text-[10px] text-slate-400 font-sans font-normal mt-0.5">
                             Type: {fact.fact_type}
                           </div>
                         </td>
                         <td className="py-3.5 px-4">
-                          <div className="font-semibold text-slate-900">{fact.product_name}</div>
+                          <div className="font-semibold text-white">{fact.product_name}</div>
                           <div className="text-[11px] text-slate-400">{fact.product_sku}</div>
                         </td>
                         <td className="py-3.5 px-4 max-w-xs">
-                          <pre className="text-[11px] bg-slate-50 p-1.5 rounded border border-slate-200 font-mono text-slate-800 whitespace-pre-wrap">
+                          <pre className="text-[11px] bg-slate-950/80 p-2 rounded-lg border border-slate-800 font-mono text-cyan-300 whitespace-pre-wrap">
                             {typeof fact.fact_value === "object"
                               ? JSON.stringify(fact.fact_value, null, 1)
                               : String(fact.fact_value)}
@@ -390,17 +398,17 @@ export default function SourcesPage() {
                         <td className="py-3.5 px-4">
                           <StatusPill status={fact.approval_status} />
                         </td>
-                        <td className="py-3.5 px-4 text-slate-600 whitespace-nowrap">
+                        <td className="py-3.5 px-4 text-slate-400 whitespace-nowrap">
                           {formatDate(fact.valid_from)} —{" "}
                           {fact.valid_until ? formatDate(fact.valid_until) : "Indefinite"}
                         </td>
-                        <td className="py-3.5 px-4 sm:px-6 text-slate-600">
+                        <td className="py-3.5 px-4 sm:px-6 text-slate-400">
                           {fact.source_document_title ? (
-                            <span className="text-indigo-600 font-medium hover:underline cursor-pointer">
+                            <span className="text-violet-400 font-medium hover:underline cursor-pointer">
                               {fact.source_document_title}
                             </span>
                           ) : (
-                            <span className="text-slate-400 italic">Direct Catalogue Fact</span>
+                            <span className="text-slate-500 italic">Direct Catalogue Fact</span>
                           )}
                         </td>
                       </tr>
@@ -409,25 +417,25 @@ export default function SourcesPage() {
                 </table>
               </div>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       )}
 
       {/* TAB 3: PRODUCT CATALOG */}
       {!isLoading && activeTab === "products" && (
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-3">
+        <div className="rounded-xl border border-slate-800/80 bg-slate-900/60 backdrop-blur-md shadow-xl overflow-hidden">
+          <div className="p-5 border-b border-slate-800/80 flex flex-row items-center justify-between">
             <div>
-              <CardTitle>DermaGlow Product Catalogue</CardTitle>
-              <CardDescription>
-                Registered commercial products, reference retail prices, and regulatory statuses
-              </CardDescription>
+              <h2 className="text-base font-bold text-white tracking-tight">DermaGlow Product Catalogue</h2>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Registered commercial products, reference retail prices, and regulatory statuses.
+              </p>
             </div>
-            <span className="text-[11px] font-medium text-slate-400">
+            <span className="text-[11px] font-semibold text-violet-300 bg-violet-950/60 border border-violet-800/60 px-2.5 py-0.5 rounded-full">
               {filteredProducts.length} Product(s)
             </span>
-          </CardHeader>
-          <CardContent className="p-0">
+          </div>
+          <div className="p-0">
             {filteredProducts.length === 0 ? (
               <div className="p-8 text-center text-xs text-slate-400">
                 No products matching &ldquo;{searchQuery}&rdquo;.
@@ -436,7 +444,7 @@ export default function SourcesPage() {
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs border-collapse">
                   <thead>
-                    <tr className="border-b border-slate-100 bg-slate-50/70 text-slate-500 uppercase font-semibold text-[11px] tracking-wider">
+                    <tr className="border-b border-slate-800 bg-slate-950/50 text-slate-400 uppercase font-semibold text-[10px] tracking-wider">
                       <th className="py-3 px-4 sm:px-6">Product Name</th>
                       <th className="py-3 px-4">SKU</th>
                       <th className="py-3 px-4">Category</th>
@@ -445,30 +453,30 @@ export default function SourcesPage() {
                       <th className="py-3 px-4 sm:px-6">Registered On</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100 text-slate-700">
+                  <tbody className="divide-y divide-slate-800/60 text-slate-200">
                     {filteredProducts.map((p) => (
-                      <tr key={p.id} className="hover:bg-slate-50/80 transition-colors">
+                      <tr key={p.id} className="hover:bg-slate-800/40 transition-colors">
                         <td className="py-3.5 px-4 sm:px-6">
-                          <div className="font-semibold text-slate-900">{p.name}</div>
+                          <div className="font-semibold text-white">{p.name}</div>
                           {p.description && (
-                            <div className="text-[11px] text-slate-500 mt-0.5 line-clamp-1">
+                            <div className="text-[11px] text-slate-400 mt-0.5 line-clamp-1">
                               {p.description}
                             </div>
                           )}
                         </td>
                         <td className="py-3.5 px-4">
-                          <code className="text-slate-800 font-mono text-[11px] bg-slate-100 px-1.5 py-0.5 rounded">
+                          <code className="text-violet-300 font-mono text-[11px] bg-slate-950 px-2 py-0.5 rounded border border-slate-800">
                             {p.sku}
                           </code>
                         </td>
-                        <td className="py-3.5 px-4 text-slate-600">{p.category}</td>
-                        <td className="py-3.5 px-4 font-bold text-slate-900">
+                        <td className="py-3.5 px-4 text-slate-400">{p.category}</td>
+                        <td className="py-3.5 px-4 font-bold text-white">
                           ₹{Number(p.reference_price).toLocaleString("en-IN")}
                         </td>
                         <td className="py-3.5 px-4">
                           <StatusPill status={p.status} />
                         </td>
-                        <td className="py-3.5 px-4 sm:px-6 text-slate-500">
+                        <td className="py-3.5 px-4 sm:px-6 text-slate-400">
                           {formatDate(p.created_at)}
                         </td>
                       </tr>
@@ -477,25 +485,25 @@ export default function SourcesPage() {
                 </table>
               </div>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       )}
 
       {/* TAB 4: ACTIVE PROMOTIONS */}
       {!isLoading && activeTab === "promotions" && (
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-3">
+        <div className="rounded-xl border border-slate-800/80 bg-slate-900/60 backdrop-blur-md shadow-xl overflow-hidden">
+          <div className="p-5 border-b border-slate-800/80 flex flex-row items-center justify-between">
             <div>
-              <CardTitle>Active Pricing Promotions & Discount Exceptions</CardTitle>
-              <CardDescription>
-                Promotional pricing rules consulted by claim verification before flagging pricing discrepancies
-              </CardDescription>
+              <h2 className="text-base font-bold text-white tracking-tight">Active Pricing Promotions & Discount Exceptions</h2>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Promotional pricing rules consulted by claim verification before flagging pricing discrepancies.
+              </p>
             </div>
-            <span className="text-[11px] font-medium text-slate-400">
+            <span className="text-[11px] font-semibold text-violet-300 bg-violet-950/60 border border-violet-800/60 px-2.5 py-0.5 rounded-full">
               {filteredPromotions.length} Promotion(s)
             </span>
-          </CardHeader>
-          <CardContent className="p-0">
+          </div>
+          <div className="p-0">
             {filteredPromotions.length === 0 ? (
               <div className="p-8 text-center text-xs text-slate-400">
                 No promotions matching &ldquo;{searchQuery}&rdquo;.
@@ -504,7 +512,7 @@ export default function SourcesPage() {
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs border-collapse">
                   <thead>
-                    <tr className="border-b border-slate-100 bg-slate-50/70 text-slate-500 uppercase font-semibold text-[11px] tracking-wider">
+                    <tr className="border-b border-slate-800 bg-slate-950/50 text-slate-400 uppercase font-semibold text-[10px] tracking-wider">
                       <th className="py-3 px-4 sm:px-6">Promotion Name</th>
                       <th className="py-3 px-4">Target Product</th>
                       <th className="py-3 px-4">Resulting Price</th>
@@ -513,21 +521,21 @@ export default function SourcesPage() {
                       <th className="py-3 px-4 sm:px-6">Applicable Channels</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100 text-slate-700">
+                  <tbody className="divide-y divide-slate-800/60 text-slate-200">
                     {filteredPromotions.map((promo) => (
-                      <tr key={promo.id} className="hover:bg-slate-50/80 transition-colors">
+                      <tr key={promo.id} className="hover:bg-slate-800/40 transition-colors">
                         <td className="py-3.5 px-4 sm:px-6">
-                          <div className="font-semibold text-slate-900">{promo.promotion_name}</div>
+                          <div className="font-semibold text-white">{promo.promotion_name}</div>
                           {promo.terms && (
-                            <div className="text-[11px] text-slate-500 mt-0.5 line-clamp-1">
+                            <div className="text-[11px] text-slate-400 mt-0.5 line-clamp-1">
                               {promo.terms}
                             </div>
                           )}
                         </td>
-                        <td className="py-3.5 px-4 text-slate-800 font-medium">
+                        <td className="py-3.5 px-4 text-slate-300 font-medium">
                           {promo.product_name}
                         </td>
-                        <td className="py-3.5 px-4 font-bold text-emerald-700 text-sm">
+                        <td className="py-3.5 px-4 font-bold text-emerald-300 text-sm">
                           ₹{Number(promo.resulting_price).toLocaleString("en-IN")}{" "}
                           <span className="text-[10px] text-slate-400 font-normal">
                             (-₹{Number(promo.discount_value).toLocaleString("en-IN")})
@@ -541,11 +549,11 @@ export default function SourcesPage() {
                             {promo.is_currently_active ? "Currently Active" : promo.status}
                           </Badge>
                         </td>
-                        <td className="py-3.5 px-4 text-slate-600 whitespace-nowrap">
+                        <td className="py-3.5 px-4 text-slate-400 whitespace-nowrap">
                           {formatDate(promo.start_date)} — {formatDate(promo.end_date)}
                         </td>
-                        <td className="py-3.5 px-4 sm:px-6 text-slate-600">
-                          <span className="px-2 py-0.5 bg-slate-100 rounded text-[11px] font-medium text-slate-700">
+                        <td className="py-3.5 px-4 sm:px-6 text-slate-400">
+                          <span className="px-2 py-0.5 bg-slate-800/80 border border-slate-700/60 rounded text-[11px] font-medium text-slate-300">
                             {Array.isArray(promo.applicable_channels)
                               ? promo.applicable_channels.join(", ")
                               : String(promo.applicable_channels)}
@@ -557,8 +565,8 @@ export default function SourcesPage() {
                 </table>
               </div>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       )}
 
       {/* Document Version Inspection Modal */}

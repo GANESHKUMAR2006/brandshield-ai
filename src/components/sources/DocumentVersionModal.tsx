@@ -42,37 +42,37 @@ export function DocumentVersionModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true">
       {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs transition-opacity"
+        className="fixed inset-0 bg-[#090D16]/80 backdrop-blur-md transition-opacity"
         onClick={onClose}
         aria-hidden="true"
       />
 
       {/* Modal Dialog */}
-      <div className="relative w-full max-w-2xl bg-white rounded-xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[85vh] z-10 animate-in fade-in-0 zoom-in-95 duration-150">
+      <div className="relative w-full max-w-2xl bg-slate-900/95 backdrop-blur-xl rounded-2xl shadow-2xl border border-slate-800/80 overflow-hidden flex flex-col max-h-[85vh] z-10 animate-in fade-in-0 zoom-in-95 duration-150">
         {/* Header */}
-        <div className="p-5 border-b border-slate-100 flex items-start justify-between bg-slate-50/60">
+        <div className="p-5 border-b border-slate-800/80 flex items-start justify-between bg-slate-950/50">
           <div className="flex items-start gap-3">
-            <div className="p-2 bg-indigo-50 border border-indigo-100 rounded-lg text-indigo-700 shrink-0">
+            <div className="p-2.5 bg-violet-950/60 border border-violet-800/60 rounded-xl text-violet-400 shrink-0">
               <FolderGit2Icon className="w-5 h-5" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <span className="text-[11px] font-semibold uppercase tracking-wider text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-violet-300 bg-violet-950/80 px-2 py-0.5 rounded border border-violet-800/60">
                   {sourceDoc.document_type.replace(/_/g, " ")}
                 </span>
                 <Badge variant={sourceDoc.is_expired ? "warning" : "success"} size="sm">
                   {sourceDoc.approval_status}
                 </Badge>
               </div>
-              <h3 className="text-base font-semibold text-slate-900 mt-1 leading-snug">
+              <h3 className="text-base font-semibold text-white mt-1 leading-snug">
                 {sourceDoc.title}
               </h3>
-              <p className="text-xs text-slate-500 mt-0.5">ID: {sourceDoc.id}</p>
+              <p className="text-xs font-mono text-slate-400 mt-0.5">ID: {sourceDoc.id}</p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 rounded-lg transition-colors"
+            className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800/60 rounded-lg transition-colors cursor-pointer"
             aria-label="Close"
           >
             <CloseIcon className="w-5 h-5" />
@@ -80,20 +80,20 @@ export function DocumentVersionModal({
         </div>
 
         {/* Content Body */}
-        <div className="p-5 overflow-y-auto space-y-5 text-xs text-slate-700">
+        <div className="p-5 overflow-y-auto space-y-5 text-xs text-slate-300">
           {sourceDoc.description && (
-            <div className="p-3 bg-slate-50 rounded-lg border border-slate-200/70 text-slate-600 leading-relaxed">
-              <span className="font-semibold text-slate-900">Description: </span>
+            <div className="p-3 bg-slate-950/60 rounded-xl border border-slate-800/80 text-slate-300 leading-relaxed">
+              <span className="font-semibold text-slate-100">Description: </span>
               {sourceDoc.description}
             </div>
           )}
 
           <div>
             <div className="flex items-center justify-between mb-3">
-              <h4 className="font-semibold text-slate-900 text-sm">
+              <h4 className="font-semibold text-white text-sm">
                 Document Version History ({docVersions.length})
               </h4>
-              <span className="text-[11px] text-slate-400">
+              <span className="text-[11px] text-slate-500 font-mono">
                 Sorted by version sequence
               </span>
             </div>
@@ -107,61 +107,61 @@ export function DocumentVersionModal({
                     key={ver.id}
                     className={`p-4 rounded-xl border transition-all ${
                       isCurrentApproved
-                        ? "bg-indigo-50/40 border-indigo-200 shadow-2xs"
-                        : "bg-white border-slate-200"
+                        ? "bg-violet-950/20 border-violet-700/60 shadow-lg shadow-violet-950/20"
+                        : "bg-slate-950/40 border-slate-800/80 hover:border-slate-700"
                     }`}
                   >
                     <div className="flex items-center justify-between gap-2 mb-2">
                       <div className="flex items-center gap-2">
-                        <span className="font-bold text-slate-900 text-sm">
+                        <span className="font-bold text-white text-sm">
                           Version {ver.version_number}
                         </span>
                         {isCurrentApproved && (
-                          <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">
+                          <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-950/70 text-emerald-300 border border-emerald-800/60">
                             <CheckCircleIcon className="w-3.5 h-3.5" />
                             Active Approved Version
                           </span>
                         )}
                         {ver.is_superseded && (
-                          <span className="text-[11px] font-medium px-2 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200">
+                          <span className="text-[11px] font-medium px-2 py-0.5 rounded bg-slate-800/80 text-slate-400 border border-slate-700/60">
                             Superseded
                           </span>
                         )}
                         {ver.is_expired && (
-                          <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200">
+                          <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded bg-amber-950/70 text-amber-300 border border-amber-800/60">
                             <AlertCircleIcon className="w-3.5 h-3.5" />
                             Expired
                           </span>
                         )}
                       </div>
                       <span className="text-[11px] text-slate-400">
-                        Status: <strong className="text-slate-700">{ver.approval_status}</strong>
+                        Status: <strong className="text-slate-200 capitalize">{ver.approval_status}</strong>
                       </span>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2 border-t border-slate-100 text-[11px] text-slate-600">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2 border-t border-slate-800/60 text-[11px] text-slate-400">
                       <div>
-                        <span className="text-slate-400">Storage Path: </span>
-                        <code className="text-indigo-700 font-mono text-[10px] bg-slate-100 px-1 py-0.5 rounded">
+                        <span className="text-slate-500">Storage Path: </span>
+                        <code className="text-cyan-300 font-mono text-[10px] bg-slate-900 border border-slate-800 px-1.5 py-0.5 rounded">
                           {ver.storage_path}
                         </code>
                       </div>
                       <div>
-                        <span className="text-slate-400">Approval Date: </span>
-                        <span className="text-slate-800 font-medium">
+                        <span className="text-slate-500">Approval Date: </span>
+                        <span className="text-slate-200 font-medium">
                           {ver.approval_date ? formatDate(ver.approval_date) : "Pending"}
                         </span>
                       </div>
                       <div>
-                        <span className="text-slate-400">Validity Window: </span>
-                        <span className="text-slate-800 font-medium">
+                        <span className="text-slate-500">Validity Window: </span>
+                        <span className="text-slate-200 font-medium">
                           {formatDate(ver.valid_from)} —{" "}
                           {ver.valid_until ? formatDate(ver.valid_until) : "Indefinite"}
                         </span>
                       </div>
                       <div>
-                        <span className="text-slate-400">Content Hash: </span>
-                        <span className="text-slate-500 font-mono text-[10px] truncate inline-block max-w-[180px]">
+                        <span className="text-slate-500">Content Hash: </span>
+                        <span className="text-slate-400 font-mono text-[10px] truncate inline-block max-w-[180px]">
                           {ver.content_hash}
                         </span>
                       </div>
@@ -174,7 +174,7 @@ export function DocumentVersionModal({
         </div>
 
         {/* Footer */}
-        <div className="p-4 border-t border-slate-100 flex justify-end bg-slate-50/40">
+        <div className="p-4 border-t border-slate-800/80 flex justify-end bg-slate-950/50">
           <Button variant="outline" size="sm" onClick={onClose}>
             Close
           </Button>

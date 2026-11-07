@@ -1,16 +1,24 @@
 /**
  * BrandShield AI — Claim Validator & Substring Offset Verifier
  * Phase 4: AI-Powered Marketing Claim Extraction Engine
+ * Phase 10D: Deterministic Claim Offset Correction
  *
  * Implements strict Zod validation, JavaScript UTF-16 offset verification,
- * substring equality guarantees, and overlapping span resolution.
+ * substring equality guarantees, deterministic offset correction, and overlapping span resolution.
  */
 
 import {
-  ExtractionResponseSchema,
+  ModelClaimOutput,
+  ModelClaimOutputSchema,
+  ModelExtractionResponseSchema,
   RawExtractedClaim,
   RawExtractedClaimSchema,
 } from "../extraction/extraction-schema";
+import {
+  ClaimOffsetCalculator,
+  OffsetResolutionStatus,
+  TextSpan,
+} from "../extraction/claim-offset-calculator";
 
 export interface SpanValidationResult {
   isValid: boolean;
@@ -24,11 +32,26 @@ export interface ValidationReport {
   rejectedClaims: Array<{
     claim: unknown;
     reason: string;
+    resolution_status?: OffsetResolutionStatus;
+    occurrences?: TextSpan[];
   }>;
   validationErrors: string[];
 }
 
+export interface ValidationOptions {
+  /**
+   * When true (default), deterministically calculates and verifies UTF-16 character offsets
+   * against the original content instead of relying on model-generated character arithmetic.
+   * Disambiguates repeated claims and flags ambiguous or missing matches for manual review.
+   */
+  autoCorrectOffsets?: boolean;
+}
+
 export class ClaimValidator {
+  // Direct access to deterministic offset calculation utilities
+  public static readonly calculateDeterministicOffset = ClaimOffsetCalculator.calculateSingleOffset.bind(ClaimOffsetCalculator);
+  public static readonly resolveClaimOffsets = ClaimOffsetCalculator.resolveBatch.bind(ClaimOffsetCalculator);
+
   /**
    * Verifies that the claim's text_start and text_end indices
    * strictly correspond to the verbatim claim_text in originalContent.
@@ -128,12 +151,14 @@ export class ClaimValidator {
   /**
    * Full validation pipeline:
    * 1. Zod schema validation
-   * 2. Substring & offset verification against original content
-   * 3. Overlap and duplicate resolution
+   * 2. Deterministic offset resolution (calculating & verifying UTF-16 string indices)
+   * 3. Substring & offset verification against original content
+   * 4. Overlap and duplicate resolution
    */
   public static validateExtraction(
     rawInput: unknown,
-    originalContent: string
+    originalContent: string,
+    options?: ValidationOptions
   ): ValidationReport {
     const report: ValidationReport = {
       success: true,
@@ -142,60 +167,129 @@ export class ClaimValidator {
       validationErrors: [],
     };
 
-    // 1. Zod Schema Validation
-    let parsedClaims: RawExtractedClaim[] = [];
+    const autoCorrect = options?.autoCorrectOffsets !== false;
 
-    // Support both { claims: [...] } envelope and direct array
-    const envelopeResult = ExtractionResponseSchema.safeParse(rawInput);
-    if (envelopeResult.success) {
-      parsedClaims = envelopeResult.data.claims;
-    } else {
-      // Try array directly
-      if (Array.isArray(rawInput)) {
-        for (let i = 0; i < rawInput.length; i++) {
-          const itemResult = RawExtractedClaimSchema.safeParse(rawInput[i]);
-          if (itemResult.success) {
-            parsedClaims.push(itemResult.data);
-          } else {
-            report.rejectedClaims.push({
-              claim: rawInput[i],
-              reason: `Zod validation error at index ${i}: ${itemResult.error.issues.map((iss) => iss.message).join(", ")}`,
-            });
-            report.validationErrors.push(`Index ${i}: Invalid schema`);
-          }
-        }
-      } else {
-        report.success = false;
-        report.validationErrors.push(
-          `Payload does not conform to ExtractionResponseSchema: ${envelopeResult.error.issues.map((iss) => iss.message).join(", ")}`
-        );
-        return report;
-      }
+    // 1. Parse Input with Zod Schemas
+    const rawCandidates: ModelClaimOutput[] = [];
+
+    let claimsArray: unknown[] | null = null;
+    if (Array.isArray(rawInput)) {
+      claimsArray = rawInput;
+    } else if (rawInput && typeof rawInput === "object" && "claims" in rawInput && Array.isArray((rawInput as Record<string, unknown>).claims)) {
+      claimsArray = (rawInput as { claims: unknown[] }).claims;
     }
 
-    // 2. Substring and Offset Verification
+    if (claimsArray !== null) {
+      for (let i = 0; i < claimsArray.length; i++) {
+        const itemResult = ModelClaimOutputSchema.safeParse(claimsArray[i]);
+        if (itemResult.success) {
+          rawCandidates.push(itemResult.data);
+        } else {
+          report.rejectedClaims.push({
+            claim: claimsArray[i],
+            reason: `Zod validation error at index ${i}: ${itemResult.error.issues.map((iss) => iss.message).join(", ")}`,
+          });
+          report.validationErrors.push(`Index ${i}: Invalid schema: ${itemResult.error.issues.map((iss) => iss.message).join(", ")}`);
+        }
+      }
+    } else {
+      const modelEnvelopeResult = ModelExtractionResponseSchema.safeParse(rawInput);
+      report.success = false;
+      report.validationErrors.push(
+        `Payload does not conform to ExtractionResponseSchema: ${modelEnvelopeResult.error?.issues.map((iss) => iss.message).join(", ") || "Expected array or { claims: [...] } envelope."}`
+      );
+      return report;
+    }
+
+    // If no auto-correction requested (strict legacy check)
+    if (!autoCorrect) {
+      const parsedClaims: RawExtractedClaim[] = [];
+      for (let i = 0; i < rawCandidates.length; i++) {
+        const strictCheck = RawExtractedClaimSchema.safeParse(rawCandidates[i]);
+        if (strictCheck.success) {
+          parsedClaims.push(strictCheck.data);
+        } else {
+          report.rejectedClaims.push({
+            claim: rawCandidates[i],
+            reason: `Legacy offset validation failure at index ${i}: missing or invalid text_start/text_end.`,
+          });
+          report.validationErrors.push(`Index ${i}: Missing valid offsets in legacy mode`);
+        }
+      }
+
+      const verifiedClaims: RawExtractedClaim[] = [];
+      for (const claim of parsedClaims) {
+        const spanCheck = this.verifySpan(claim, originalContent);
+        if (spanCheck.isValid) {
+          verifiedClaims.push(claim);
+        } else {
+          report.rejectedClaims.push({
+            claim,
+            reason: spanCheck.reason || "Invalid span offset or substring mismatch",
+          });
+          report.validationErrors.push(`Claim "${claim.claim_text}": ${spanCheck.reason}`);
+        }
+      }
+
+      report.validatedClaims = this.resolveOverlappingSpans(verifiedClaims);
+      if (report.rejectedClaims.length > 0 && report.validatedClaims.length === 0 && parsedClaims.length > 0) {
+        report.success = false;
+      }
+      return report;
+    }
+
+    // 2. Deterministic Offset Resolution
+    const batchResult = ClaimOffsetCalculator.resolveBatch(rawCandidates, originalContent);
+
+    // Record any unresolvable claims (missing text, ambiguous occurrences, empty text)
+    for (const unresolved of batchResult.unresolvedClaims) {
+      report.rejectedClaims.push({
+        claim: unresolved.claim,
+        reason: unresolved.reason,
+        resolution_status: unresolved.status,
+        occurrences: unresolved.occurrences,
+      });
+      report.validationErrors.push(
+        `Claim "${unresolved.claim.claim_text}": ${unresolved.reason}`
+      );
+    }
+
+    // 3. Strict verification of resolved claims against RawExtractedClaimSchema & verifySpan
     const verifiedClaims: RawExtractedClaim[] = [];
 
-    for (const claim of parsedClaims) {
-      const spanCheck = this.verifySpan(claim, originalContent);
-      if (spanCheck.isValid) {
-        verifiedClaims.push(claim);
-      } else {
+    for (const claim of batchResult.resolvedClaims) {
+      const claimToValidate = {
+        ...claim,
+        entities: claim.entities || {},
+        extraction_confidence: typeof claim.extraction_confidence === "number" ? claim.extraction_confidence : 0.95,
+      };
+      const strictParse = RawExtractedClaimSchema.safeParse(claimToValidate);
+      if (!strictParse.success) {
         report.rejectedClaims.push({
           claim,
-          reason: spanCheck.reason || "Invalid span offset or substring mismatch",
+          reason: `Resolved claim failed strict RawExtractedClaimSchema: ${strictParse.error.issues.map((iss) => iss.message).join(", ")}`,
         });
-        report.validationErrors.push(
-          `Claim "${claim.claim_text}": ${spanCheck.reason}`
-        );
+        report.validationErrors.push(`Claim "${claim.claim_text}": Invalid schema after resolution`);
+        continue;
+      }
+
+      const spanCheck = this.verifySpan(strictParse.data, originalContent);
+      if (spanCheck.isValid) {
+        verifiedClaims.push(strictParse.data);
+      } else {
+        report.rejectedClaims.push({
+          claim: strictParse.data,
+          reason: spanCheck.reason || "Span invariant verification failed",
+        });
+        report.validationErrors.push(`Claim "${claim.claim_text}": ${spanCheck.reason}`);
       }
     }
 
-    // 3. Overlap and duplicate resolution
+    // 4. Overlap and duplicate resolution
     report.validatedClaims = this.resolveOverlappingSpans(verifiedClaims);
 
-    // If there were items rejected, report status reflects it but validated claims remain usable
-    if (report.rejectedClaims.length > 0 && report.validatedClaims.length === 0 && parsedClaims.length > 0) {
+    // 5. Final report success derivation
+    if (report.rejectedClaims.length > 0 && report.validatedClaims.length === 0 && rawCandidates.length > 0) {
       report.success = false;
     }
 

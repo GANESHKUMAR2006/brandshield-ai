@@ -9,6 +9,7 @@ import OpenAI from "openai";
 import {
   ExtractionPromptContext,
   LLMProvider,
+  ModelClaimInput,
   RawClaimOutput,
   RawExtractionResult,
 } from "./provider-interface";
@@ -17,6 +18,7 @@ import {
   EXTRACTION_SYSTEM_PROMPT,
   buildExtractionUserPrompt,
 } from "../extraction/extraction-prompt";
+import { ClaimOffsetCalculator } from "../extraction/claim-offset-calculator";
 
 export class OpenAIProvider implements LLMProvider {
   public readonly providerName = "openai";
@@ -57,11 +59,38 @@ export class OpenAIProvider implements LLMProvider {
       const responseText = completion.choices[0]?.message?.content || "{}";
       const parsed = JSON.parse(responseText);
 
-      const rawClaims: RawClaimOutput[] = Array.isArray(parsed.claims)
+      const rawCandidates: ModelClaimInput[] = Array.isArray(parsed.claims)
         ? parsed.claims
         : Array.isArray(parsed)
         ? parsed
         : [];
+
+      // Phase 10D: Deterministically calculate and verify UTF-16 character offsets
+      const batchResult = ClaimOffsetCalculator.resolveBatch(rawCandidates, context.content);
+
+      const rawClaims: RawClaimOutput[] = [];
+      for (const resolved of batchResult.resolvedClaims) {
+        rawClaims.push({
+          claim_text: resolved.claim_text,
+          claim_type: resolved.claim_type,
+          text_start: resolved.text_start,
+          text_end: resolved.text_end,
+          product_hint: resolved.product_hint || null,
+          entities: (resolved.entities as Record<string, unknown>) || {},
+          extraction_confidence: resolved.extraction_confidence ?? 0.95,
+        });
+      }
+      for (const unresolved of batchResult.unresolvedClaims) {
+        rawClaims.push({
+          claim_text: unresolved.claim.claim_text,
+          claim_type: unresolved.claim.claim_type,
+          text_start: -1,
+          text_end: -1,
+          product_hint: unresolved.claim.product_hint || null,
+          entities: (unresolved.claim.entities as Record<string, unknown>) || {},
+          extraction_confidence: unresolved.claim.extraction_confidence ?? 0.5,
+        });
+      }
 
       return {
         rawClaims,

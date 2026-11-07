@@ -13,15 +13,18 @@ import {
 import { Button } from "@/components/ui/Button";
 import { StatusPill } from "@/components/ui/StatusPill";
 import { Badge } from "@/components/ui/Badge";
-import {
-  CloseIcon,
-  FileCheckIcon,
-  AlertCircleIcon,
-  CheckCircleIcon,
-  HistoryIcon,
-  SparklesIcon,
-} from "@/components/ui/Icons";
 import { formatDate, formatDateTime } from "@/lib/utils/formatters";
+import { ClaimLifecycleStepper } from "@/components/claims/ClaimLifecycleStepper";
+import {
+  X,
+  FileCheck2,
+  AlertTriangle,
+  CheckCircle2,
+  History,
+  Sparkles,
+  ArrowRight,
+  ExternalLink,
+} from "lucide-react";
 
 interface SubmissionDetailModalProps {
   submissionId: string | null;
@@ -235,21 +238,21 @@ export function SubmissionDetailModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true">
       <div
-        className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs transition-opacity"
+        className="fixed inset-0 bg-[#090D16]/80 backdrop-blur-md transition-opacity"
         onClick={onClose}
         aria-hidden="true"
       />
 
-      <div className="relative w-full max-w-3xl bg-white rounded-xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[90vh] z-10 animate-in fade-in-0 zoom-in-95 duration-150">
+      <div className="relative w-full max-w-3xl bg-[#0B0F19] rounded-2xl shadow-2xl border border-slate-700/80 overflow-hidden flex flex-col max-h-[90vh] z-10 animate-in fade-in-0 zoom-in-95 duration-150 text-slate-100">
         {/* Header */}
-        <div className="p-5 border-b border-slate-100 flex items-start justify-between bg-slate-50/60">
+        <div className="p-5 border-b border-slate-800 flex items-start justify-between bg-slate-900/60">
           <div className="flex items-start gap-3">
-            <div className="p-2 bg-indigo-50 border border-indigo-100 rounded-lg text-indigo-700 shrink-0">
-              <FileCheckIcon className="w-5 h-5" />
+            <div className="p-2 bg-violet-950/80 border border-violet-800/60 rounded-xl text-violet-400 shrink-0">
+              <FileCheck2 className="w-5 h-5" />
             </div>
             <div>
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-[11px] font-semibold px-2 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200">
+                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-slate-800 text-slate-300 border border-slate-700">
                   {details?.channel || "Channel"}
                 </span>
                 {details && <StatusPill status={details.status} />}
@@ -257,51 +260,51 @@ export function SubmissionDetailModal({
                   v{details?.current_version_number ?? 1}
                 </Badge>
               </div>
-              <h3 className="text-base font-semibold text-slate-900 mt-1 leading-snug">
+              <h3 className="text-base font-bold text-white mt-1 leading-snug">
                 {details?.title || "Loading..."}
               </h3>
               <p className="text-xs text-slate-400 mt-0.5">
-                ID: {details?.id} · Submitted by {details?.submitted_by}
+                ID: <span className="font-mono text-cyan-300">{details?.id}</span> · Submitted by {details?.submitted_by}
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 rounded-lg transition-colors"
+            className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
           >
-            <CloseIcon className="w-5 h-5" />
+            <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Feedback alerts */}
         {error && (
-          <div className="p-3 mx-5 mt-4 rounded-lg bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center gap-2">
-            <AlertCircleIcon className="w-4 h-4 text-rose-600 shrink-0" />
+          <div className="p-3 mx-5 mt-4 rounded-xl bg-rose-950/40 border border-rose-800/60 text-rose-300 text-xs flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
             <span>{error}</span>
           </div>
         )}
         {successMsg && (
-          <div className="p-3 mx-5 mt-4 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center gap-2">
-            <CheckCircleIcon className="w-4 h-4 text-emerald-600 shrink-0" />
+          <div className="p-3 mx-5 mt-4 rounded-xl bg-emerald-950/40 border border-emerald-800/60 text-emerald-300 text-xs flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
             <span>{successMsg}</span>
           </div>
         )}
 
         {/* Publication Gate Banner */}
         {details && (
-          <div className="mx-5 mt-4 p-3.5 rounded-xl border border-slate-200 bg-slate-50/70 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-xs">
+          <div className="mx-5 mt-4 p-3.5 rounded-xl border border-slate-800 bg-slate-900/60 backdrop-blur-md flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-xs shadow-lg">
             <div className="flex items-center gap-3">
               <div className="flex flex-col gap-0.5">
                 <div className="flex items-center gap-2">
-                  <span className="font-bold text-slate-800">Publication Gate:</span>
+                  <span className="font-bold text-white">Publication Gate:</span>
                   <StatusPill status={details.publication_status || "ineligible"} />
                   {details.status === "published" && (
-                    <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-semibold text-[10px]">
+                    <span className="px-2 py-0.5 rounded-full bg-emerald-950/80 text-emerald-300 border border-emerald-800/60 font-semibold text-[10px] shadow-[0_0_6px_rgba(52,211,153,0.3)]">
                       LIVE & PUBLISHED
                     </span>
                   )}
                 </div>
-                <span className="text-[11px] text-slate-500">
+                <span className="text-[11px] text-slate-400">
                   {details.claims.length === 0
                     ? "Ineligible: No claims extracted from content yet."
                     : `${details.claims.filter((c) => (c as unknown as { review_status?: string }).review_status === "approved").length} of ${details.claims.length} claims approved by compliance.`}
@@ -318,8 +321,8 @@ export function SubmissionDetailModal({
                 disabled={details.publication_status !== "eligible"}
                 className={
                   details.publication_status === "eligible"
-                    ? "bg-emerald-600 hover:bg-emerald-700 text-white"
-                    : "opacity-60 cursor-not-allowed"
+                    ? "bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-500 hover:to-emerald-600 text-white shadow-md shadow-emerald-950/50"
+                    : "opacity-50 cursor-not-allowed"
                 }
               >
                 Publish Campaign
@@ -328,39 +331,54 @@ export function SubmissionDetailModal({
           </div>
         )}
 
+        {/* Precise Publication Gate Blocking Reasons */}
+        {details && details.publication_status !== "eligible" && Boolean(details.publication_eligibility_details) && (
+          <div className="mx-5 mt-2.5 p-3 rounded-xl bg-amber-950/30 border border-amber-800/50 text-xs text-amber-200">
+            <div className="font-semibold text-amber-300 mb-1 flex items-center gap-1.5">
+              <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+              <span>Publication Gate Invariants Pending ({(details.publication_eligibility_details as { blockingReasons?: string[] }).blockingReasons?.length || 0}):</span>
+            </div>
+            <ul className="list-disc list-inside space-y-0.5 text-[11px] text-amber-300/90 ml-1">
+              {((details.publication_eligibility_details as { blockingReasons?: string[] }).blockingReasons || []).slice(0, 4).map((reason: string, idx: number) => (
+                <li key={idx} className="leading-snug">{reason}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         {/* Navigation Tabs & Actions */}
-        <div className="px-5 pt-3 flex items-center justify-between border-b border-slate-100 text-xs font-medium">
-          <div className="flex items-center gap-2">
+        <div className="px-5 pt-3 flex items-center justify-between border-b border-slate-800 text-xs font-medium">
+          <div className="flex items-center gap-3">
             <button
               onClick={() => setActiveTab("current")}
-              className={`pb-2 border-b-2 transition-colors cursor-pointer ${
+              className={`pb-2.5 border-b-2 transition-all cursor-pointer ${
                 activeTab === "current"
-                  ? "border-indigo-600 text-indigo-700 font-semibold"
-                  : "border-transparent text-slate-500 hover:text-slate-800"
+                  ? "border-violet-500 text-white font-semibold"
+                  : "border-transparent text-slate-400 hover:text-white"
               }`}
             >
               Current Content (v{details?.current_version_number ?? 1})
             </button>
             <button
               onClick={() => setActiveTab("history")}
-              className={`pb-2 border-b-2 transition-colors cursor-pointer flex items-center gap-1.5 ${
+              className={`pb-2.5 border-b-2 transition-all cursor-pointer flex items-center gap-1.5 ${
                 activeTab === "history"
-                  ? "border-indigo-600 text-indigo-700 font-semibold"
-                  : "border-transparent text-slate-500 hover:text-slate-800"
+                  ? "border-violet-500 text-white font-semibold"
+                  : "border-transparent text-slate-400 hover:text-white"
               }`}
             >
-              <HistoryIcon className="w-3.5 h-3.5" />
+              <History className="w-3.5 h-3.5" />
               Version History ({details?.versions.length ?? 0})
             </button>
             <button
               onClick={() => setActiveTab("claims")}
-              className={`pb-2 border-b-2 transition-colors cursor-pointer flex items-center gap-1.5 ${
+              className={`pb-2.5 border-b-2 transition-all cursor-pointer flex items-center gap-1.5 ${
                 activeTab === "claims"
-                  ? "border-indigo-600 text-indigo-700 font-semibold"
-                  : "border-transparent text-slate-500 hover:text-slate-800"
+                  ? "border-violet-500 text-white font-semibold"
+                  : "border-transparent text-slate-400 hover:text-white"
               }`}
             >
-              <SparklesIcon className="w-3.5 h-3.5 text-indigo-600" />
+              <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
               Associated Claims ({details?.claims.length ?? 0})
             </button>
           </div>
@@ -372,14 +390,14 @@ export function SubmissionDetailModal({
               onClick={handleRunExtraction}
               isLoading={isExtracting}
             >
-              <SparklesIcon className="w-3.5 h-3.5 mr-1.5" />
+              <Sparkles className="w-3.5 h-3.5 mr-1.5 text-cyan-300" />
               {isExtracting ? "Extracting..." : "Extract Claims with AI"}
             </Button>
           </div>
         </div>
 
         {/* Content Body */}
-        <div className="p-5 overflow-y-auto space-y-4 text-xs text-slate-700">
+        <div className="p-5 overflow-y-auto space-y-4 text-xs text-slate-300">
           {isLoading && (
             <div className="p-8 text-center text-slate-400">Loading submission details...</div>
           )}
@@ -387,18 +405,18 @@ export function SubmissionDetailModal({
           {/* TAB 1: CURRENT CONTENT & REVISION */}
           {!isLoading && activeTab === "current" && details && (
             <div className="space-y-4">
-              <div className="p-3 bg-slate-50 rounded-lg border border-slate-200/80 flex items-center justify-between">
+              <div className="p-3 bg-slate-900/80 rounded-xl border border-slate-800 flex items-center justify-between">
                 <div>
-                  <span className="text-slate-500">Associated Product: </span>
-                  <strong className="text-slate-900">
+                  <span className="text-slate-400">Associated Product: </span>
+                  <strong className="text-white">
                     {details.product_name
                       ? `${details.product_name} (${details.product_sku})`
                       : "Unassigned Product"}
                   </strong>
                 </div>
                 <div>
-                  <span className="text-slate-500">Created: </span>
-                  <span className="text-slate-800 font-medium">
+                  <span className="text-slate-400">Created: </span>
+                  <span className="text-slate-200 font-medium">
                     {formatDate(details.created_at)}
                   </span>
                 </div>
@@ -406,7 +424,7 @@ export function SubmissionDetailModal({
 
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <label className="font-semibold text-slate-900">
+                  <label className="font-bold text-white text-xs">
                     Marketing Content (Version {details.current_version_number})
                   </label>
                   {!isEditing && details.status === "draft" && (
@@ -426,10 +444,10 @@ export function SubmissionDetailModal({
                       rows={5}
                       value={revisedContent}
                       onChange={(e) => setRevisedContent(e.target.value)}
-                      className="w-full p-3 bg-white border border-indigo-300 rounded-lg text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-indigo-500 font-sans leading-relaxed"
+                      className="w-full p-3 bg-slate-950 border border-violet-500 rounded-xl text-white focus:outline-none focus:ring-1 focus:ring-violet-500 font-sans leading-relaxed shadow-inner"
                     />
                     <div className="flex items-center justify-between pt-1">
-                      <span className="text-[11px] text-amber-700">
+                      <span className="text-[11px] text-amber-300">
                         Saving changes creates Version {details.current_version_number + 1} and preserves Version {details.current_version_number}.
                       </span>
                       <div className="flex items-center gap-2">
@@ -455,18 +473,18 @@ export function SubmissionDetailModal({
                     </div>
                   </div>
                 ) : (
-                  <div className="p-4 rounded-lg bg-slate-50/80 border border-slate-200 text-slate-800 whitespace-pre-wrap leading-relaxed text-sm">
+                  <div className="p-4 rounded-xl bg-slate-950/70 border border-slate-800 text-slate-200 whitespace-pre-wrap leading-relaxed text-sm">
                     {details.content}
                   </div>
                 )}
               </div>
 
               {/* Status Transition Action Bar */}
-              <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/50 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div className="p-4 rounded-xl border border-slate-800 bg-slate-900/60 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 shadow-lg">
                 <div>
-                  <div className="font-semibold text-slate-900">Workflow Status Transition</div>
-                  <div className="text-[11px] text-slate-500">
-                    Current stage: <strong className="capitalize">{details.status.replace(/_/g, " ")}</strong>
+                  <div className="font-bold text-white">Workflow Status Transition</div>
+                  <div className="text-[11px] text-slate-400">
+                    Current stage: <strong className="text-violet-300 capitalize">{details.status.replace(/_/g, " ")}</strong>
                   </div>
                 </div>
 
@@ -499,7 +517,7 @@ export function SubmissionDetailModal({
           {/* TAB 2: VERSION HISTORY */}
           {!isLoading && activeTab === "history" && details && (
             <div className="space-y-3">
-              <div className="text-xs text-slate-500 mb-2">
+              <div className="text-xs text-slate-400 mb-2">
                 Every saved revision generates an immutable version record. Older versions remain completely intact for compliance audits.
               </div>
 
@@ -509,17 +527,19 @@ export function SubmissionDetailModal({
                 return (
                   <div
                     key={ver.id}
-                    className={`p-4 rounded-xl border transition-colors ${
-                      isCurrent ? "bg-indigo-50/40 border-indigo-200" : "bg-white border-slate-200"
+                    className={`p-4 rounded-xl border transition-all ${
+                      isCurrent
+                        ? "bg-violet-950/30 border-violet-800/60"
+                        : "bg-slate-900/60 border-slate-800"
                     }`}
                   >
                     <div className="flex items-center justify-between gap-2 mb-2">
                       <div className="flex items-center gap-2">
-                        <span className="font-bold text-slate-900 text-sm">
+                        <span className="font-bold text-white text-sm">
                           Version {ver.version_number}
                         </span>
                         {isCurrent && (
-                          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800">
+                          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-violet-950 text-violet-300 border border-violet-800">
                             Current Version
                           </span>
                         )}
@@ -529,7 +549,7 @@ export function SubmissionDetailModal({
                       </span>
                     </div>
 
-                    <div className="p-3 rounded-lg bg-slate-50 border border-slate-200/70 text-slate-700 whitespace-pre-wrap leading-relaxed text-xs">
+                    <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-800 text-slate-300 whitespace-pre-wrap leading-relaxed text-xs">
                       {ver.content}
                     </div>
                   </div>
@@ -542,7 +562,7 @@ export function SubmissionDetailModal({
           {!isLoading && activeTab === "claims" && details && (
             <div className="space-y-3">
               <div className="flex items-center justify-between pb-1 flex-wrap gap-2">
-                <span className="text-xs text-slate-500 font-medium">
+                <span className="text-xs text-slate-400 font-medium">
                   Extracted Claims for Version {details.current_version_number} ({details.claims.length} total)
                 </span>
                 <div className="flex items-center gap-2">
@@ -552,7 +572,7 @@ export function SubmissionDetailModal({
                     onClick={handleRunExtraction}
                     isLoading={isExtracting}
                   >
-                    <SparklesIcon className="w-3.5 h-3.5 mr-1" />
+                    <Sparkles className="w-3.5 h-3.5 mr-1" />
                     Re-extract
                   </Button>
                   <Button
@@ -562,17 +582,17 @@ export function SubmissionDetailModal({
                     isLoading={isVerifyingAll}
                     disabled={details.claims.length === 0}
                   >
-                    <FileCheckIcon className="w-3.5 h-3.5 mr-1" />
+                    <FileCheck2 className="w-3.5 h-3.5 mr-1" />
                     {isVerifyingAll ? "Verifying All..." : "Verify All Claims"}
                   </Button>
                 </div>
               </div>
 
               {details.claims.length === 0 ? (
-                <div className="p-8 text-center bg-slate-50 rounded-xl border border-dashed border-slate-200">
-                  <SparklesIcon className="w-8 h-8 text-indigo-400 mx-auto mb-2" />
-                  <div className="font-semibold text-slate-800 text-sm">No claims extracted yet</div>
-                  <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
+                <div className="p-8 text-center bg-slate-900/60 rounded-xl border border-dashed border-slate-800">
+                  <Sparkles className="w-8 h-8 text-violet-400 mx-auto mb-2" />
+                  <div className="font-bold text-white text-sm">No claims extracted yet</div>
+                  <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
                     Execute the AI Claim Extraction Engine to automatically detect and extract factual statements, ingredients, prices, and guarantees.
                   </p>
                   <Button
@@ -589,15 +609,15 @@ export function SubmissionDetailModal({
                 details.claims.map((claim) => (
                   <div
                     key={claim.id}
-                    className="p-4 rounded-xl border border-slate-200 bg-white hover:border-slate-300 transition-colors shadow-xs"
+                    className="p-4 rounded-xl border border-slate-800 bg-slate-900/60 hover:border-slate-700 transition-colors shadow-lg"
                   >
                     <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-[10px] uppercase font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded">
+                        <span className="text-[10px] uppercase font-bold text-violet-300 bg-violet-950/80 border border-violet-800/60 px-2 py-0.5 rounded">
                           {claim.claim_type.replace(/_/g, " ")}
                         </span>
                         {claim.text_start !== null && claim.text_end !== null && (
-                          <span className="text-[10px] font-mono text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
+                          <span className="text-[10px] font-mono text-cyan-300 bg-cyan-950/60 border border-cyan-800/50 px-1.5 py-0.5 rounded">
                             span [{claim.text_start}..{claim.text_end}]
                           </span>
                         )}
@@ -616,16 +636,42 @@ export function SubmissionDetailModal({
                           </Badge>
                         )}
                       </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-[11px] font-mono text-slate-500">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-[11px] font-mono text-slate-400">
                           {Math.round(claim.extraction_confidence * 100)}% conf
                         </span>
                         <StatusPill status={claim.verification_status} />
+                        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded border uppercase ${
+                          (claim as unknown as { review_status?: string }).review_status === "approved"
+                            ? "bg-emerald-950/80 text-emerald-300 border-emerald-800/60"
+                            : (claim as unknown as { review_status?: string }).review_status === "rejected"
+                            ? "bg-rose-950/80 text-rose-300 border-rose-800/60"
+                            : (claim as unknown as { review_status?: string }).review_status === "modified"
+                            ? "bg-cyan-950/80 text-cyan-300 border-cyan-800/60"
+                            : (claim as unknown as { review_status?: string }).review_status === "escalated"
+                            ? "bg-purple-950/80 text-purple-300 border-purple-800/60"
+                            : "bg-amber-950/80 text-amber-300 border-amber-800/60"
+                        }`}>
+                          {(claim as unknown as { review_status?: string }).review_status?.replace(/_/g, " ") || "Pending Review"}
+                        </span>
                       </div>
                     </div>
 
-                    <div className="font-semibold text-slate-900 leading-snug text-sm">
+                    <div className="font-semibold text-white leading-snug text-sm">
                       &ldquo;{claim.claim_text}&rdquo;
+                    </div>
+
+                    {/* 4-Stage Compliance Progression Stepper */}
+                    <div className="my-2.5 pt-1 border-t border-slate-800">
+                      <ClaimLifecycleStepper
+                        compact={true}
+                        textStart={claim.text_start}
+                        textEnd={claim.text_end}
+                        extractionConfidence={claim.extraction_confidence}
+                        verificationStatus={claim.verification_status}
+                        riskLevel={claim.risk_level}
+                        reviewStatus={(claim as unknown as { review_status?: string }).review_status}
+                      />
                     </div>
 
                     {claim.extracted_entities && Object.keys(claim.extracted_entities).length > 0 && (
@@ -633,7 +679,7 @@ export function SubmissionDetailModal({
                         {Object.entries(claim.extracted_entities).map(([k, v]) => (
                           <span
                             key={k}
-                            className="inline-flex items-center gap-1 text-[10px] bg-slate-50 border border-slate-200 px-2 py-0.5 rounded text-slate-600 font-mono"
+                            className="inline-flex items-center gap-1 text-[10px] bg-slate-950 border border-slate-800 px-2 py-0.5 rounded text-slate-300 font-mono"
                           >
                             <span className="text-slate-400 font-sans">{k}:</span>
                             <strong>{String(v)}</strong>
@@ -643,37 +689,47 @@ export function SubmissionDetailModal({
                     )}
 
                     {claim.explanation && (
-                      <div className="text-[11px] text-slate-700 mt-2.5 p-2.5 bg-slate-50 rounded-lg border border-slate-200 leading-relaxed">
+                      <div className="text-[11px] text-slate-300 mt-2.5 p-2.5 bg-slate-950/80 rounded-xl border border-slate-800 leading-relaxed">
                         {claim.explanation}
                       </div>
                     )}
 
                     {claim.suggested_correction && (
-                      <div className="mt-2 p-2.5 rounded-lg bg-emerald-50 border border-emerald-200 text-xs">
-                        <span className="text-[10px] font-bold text-emerald-800 uppercase tracking-wide">
+                      <div className="mt-2 p-2.5 rounded-xl bg-emerald-950/30 border border-emerald-800/50 text-xs">
+                        <span className="text-[10px] font-bold text-emerald-300 uppercase tracking-wide">
                           Suggested Defensible Correction:
                         </span>
-                        <p className="text-emerald-950 font-medium mt-0.5">
+                        <p className="text-emerald-200 font-medium mt-0.5">
                           &ldquo;{claim.suggested_correction}&rdquo;
                         </p>
                       </div>
                     )}
 
-                    <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400">
+                    <div className="mt-3 pt-2.5 border-t border-slate-800 flex items-center justify-between text-[11px] text-slate-400">
                       <span>
                         {claim.verified_at
                           ? `Verified: ${formatDateTime(claim.verified_at)}`
                           : "Awaiting deterministic verification"}
                       </span>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleVerifySingleClaim(claim.id)}
-                        isLoading={verifyingClaimId === claim.id}
-                        className="h-7 text-[11px] px-2.5"
-                      >
-                        Verify Claim
-                      </Button>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleVerifySingleClaim(claim.id)}
+                          isLoading={verifyingClaimId === claim.id}
+                          className="h-7 text-[11px] px-2.5"
+                        >
+                          Verify Claim
+                        </Button>
+                        <a
+                          href={`/reviews?search=${encodeURIComponent(claim.claim_text.slice(0, 30))}`}
+                          className="inline-flex items-center justify-center h-7 text-[11px] px-2.5 rounded-lg border border-violet-800/60 bg-violet-950/80 text-violet-300 hover:bg-violet-900 font-semibold transition-colors"
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          Review in Queue →
+                        </a>
+                      </div>
                     </div>
                   </div>
                 ))
@@ -683,7 +739,7 @@ export function SubmissionDetailModal({
         </div>
 
         {/* Footer */}
-        <div className="p-4 border-t border-slate-100 flex justify-end bg-slate-50/40">
+        <div className="p-4 border-t border-slate-800 flex justify-end bg-slate-950/60">
           <Button variant="outline" size="sm" onClick={onClose}>
             Close
           </Button>

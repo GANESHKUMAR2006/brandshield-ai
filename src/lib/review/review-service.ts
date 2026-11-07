@@ -44,6 +44,24 @@ export interface PublicationCompilationResult {
   unresolvedNonCompliantPhrases: string[];
 }
 
+// Cached check to determine whether Phase 9 policy columns exist on claims table
+let cachedHasPhase9ClaimColumns: boolean | null = null;
+
+async function checkPhase9ClaimColumns(client: { query: (q: string, p?: unknown[]) => Promise<{ rows: unknown[] }> }): Promise<boolean> {
+  if (cachedHasPhase9ClaimColumns === null) {
+    try {
+      const res = await client.query(
+        `SELECT 1 FROM information_schema.columns 
+         WHERE table_name = 'claims' AND column_name = 'policy_compliance_status' LIMIT 1;`
+      );
+      cachedHasPhase9ClaimColumns = res.rows.length > 0;
+    } catch {
+      cachedHasPhase9ClaimColumns = false;
+    }
+  }
+  return cachedHasPhase9ClaimColumns;
+}
+
 export class ReviewWorkflowService {
   /**
    * Pure state machine transition and rule validator.
@@ -414,6 +432,11 @@ export class ReviewWorkflowService {
 
     return await withTransaction(async (client) => {
       // 1. Fetch target claim with row-level lock and verify workspace membership
+      const hasPhase9Cols = await checkPhase9ClaimColumns(client);
+      const policySelect = hasPhase9Cols
+        ? 'c.policy_compliance_status, c.mandatory_reviewer_role, c.required_evidence_types,'
+        : 'NULL as policy_compliance_status, NULL as mandatory_reviewer_role, ARRAY[]::text[] as required_evidence_types,';
+
       const claimRes = await client.query<{
         id: string;
         submission_id: string;
@@ -431,7 +454,7 @@ export class ReviewWorkflowService {
       }>(
         `SELECT c.id, c.submission_id, c.submission_version_id, c.claim_text, c.claim_type,
                 c.verification_status, c.risk_level, c.review_status, c.product_id,
-                c.policy_compliance_status, c.mandatory_reviewer_role, c.required_evidence_types,
+                ${policySelect}
                 s.workspace_id
          FROM claims c
          JOIN submissions s ON c.submission_id = s.id
@@ -765,7 +788,20 @@ export class ReviewWorkflowService {
 
       const submission = subRes.rows[0];
 
+      // Phase 15 Resilience: Idempotent publication check
+      if (submission.status === "published") {
+        return {
+          submissionId: submission.id,
+          title: submission.title,
+          status: "published",
+          publicationStatus: submission.publication_status,
+          publishedAt: new Date().toISOString(),
+          alreadyPublished: true,
+        };
+      }
+
       // 2. Fetch all current active claims for verification check (locked FOR UPDATE)
+      const hasPhase9Cols = await checkPhase9ClaimColumns(client);
       const claimsRes = await client.query<{
         id: string;
         claim_text: string;
@@ -781,7 +817,7 @@ export class ReviewWorkflowService {
         override_reason: string | null;
       }>(
         `SELECT c.id, c.claim_text, c.review_status, c.verification_status, c.risk_level, c.is_active, c.original_claim_id,
-                c.policy_compliance_status, c.mandatory_reviewer_role, c.required_evidence_types,
+                ${hasPhase9Cols ? 'c.policy_compliance_status, c.mandatory_reviewer_role, c.required_evidence_types,' : 'NULL as policy_compliance_status, NULL as mandatory_reviewer_role, ARRAY[]::text[] as required_evidence_types,'}
                 rd.reviewer_role as approved_by_role, rd.override_reason
          FROM claims c
          LEFT JOIN LATERAL (

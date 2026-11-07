@@ -11,15 +11,15 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className, variant = "primary", size = "md", isLoading = false, children, disabled, ...props }, ref) => {
     const variantStyles = {
       primary:
-        "bg-indigo-600 text-white hover:bg-indigo-700 active:bg-indigo-800 focus-visible:ring-indigo-500 shadow-xs border border-indigo-600",
+        "bg-gradient-to-r from-violet-600 to-indigo-600 text-white hover:from-violet-500 hover:to-indigo-500 active:from-violet-700 active:to-indigo-700 shadow-md shadow-violet-950/40 border border-violet-500/30 focus-visible:ring-violet-500",
       secondary:
-        "bg-slate-100 text-slate-900 hover:bg-slate-200 active:bg-slate-300 focus-visible:ring-slate-400 border border-slate-200",
+        "bg-slate-800/80 text-slate-200 hover:bg-slate-700/80 active:bg-slate-800 border border-slate-700/80 focus-visible:ring-slate-400",
       outline:
-        "bg-white text-slate-700 hover:bg-slate-50 active:bg-slate-100 focus-visible:ring-slate-400 border border-slate-200 shadow-xs",
+        "bg-slate-900/40 text-slate-200 hover:bg-slate-800/60 active:bg-slate-800 border border-slate-700/80 hover:border-slate-600 focus-visible:ring-slate-400 shadow-xs",
       ghost:
-        "bg-transparent text-slate-600 hover:bg-slate-100 hover:text-slate-900 focus-visible:ring-slate-400",
+        "bg-transparent text-slate-300 hover:bg-slate-800/60 hover:text-white focus-visible:ring-slate-400",
       danger:
-        "bg-rose-600 text-white hover:bg-rose-700 active:bg-rose-800 focus-visible:ring-rose-500 shadow-xs border border-rose-600",
+        "bg-rose-600 text-white hover:bg-rose-500 active:bg-rose-700 shadow-md shadow-rose-950/40 border border-rose-500/30 focus-visible:ring-rose-500",
     };
 
     const sizeStyles = {
@@ -33,7 +33,7 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         ref={ref}
         disabled={disabled || isLoading}
         className={cn(
-          "inline-flex items-center justify-center font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2",
+          "inline-flex items-center justify-center font-medium transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-[#090D16]",
           variantStyles[variant],
           sizeStyles[size],
           className

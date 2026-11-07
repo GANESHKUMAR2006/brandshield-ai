@@ -9,7 +9,17 @@ import { Badge } from "@/components/ui/Badge";
 import { formatPercent } from "@/lib/utils/formatters";
 import { LiveClaimRecord, fetchClaims, verifyClaim } from "@/lib/api-client";
 import { ClaimDetailModal } from "@/components/claims/ClaimDetailModal";
-import { AlertCircleIcon } from "@/components/ui/Icons";
+import {
+  ShieldAlert,
+  CheckCircle2,
+  AlertTriangle,
+  Clock,
+  Sparkles,
+  Search,
+  RefreshCw,
+  Layers,
+  ArrowRight,
+} from "lucide-react";
 
 const riskBadgeMap: Record<string, "danger" | "warning" | "default" | "success"> = {
   critical: "danger",
@@ -109,21 +119,22 @@ export default function ClaimsPage() {
   return (
     <AppLayout>
       {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-2 border-b border-slate-200/80">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-2 border-b border-slate-800/80">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 flex items-center gap-2">
-            <span>Claim Ledger</span>
-            <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
-              Live PostgreSQL
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-white flex items-center gap-2.5">
+            <span>Claim Ledger & Forensic Analysis</span>
+            <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-violet-950/70 text-violet-300 border border-violet-800/60 shadow-[0_0_8px_rgba(139,92,246,0.3)]">
+              Live PostgreSQL 17
             </span>
           </h1>
-          <p className="text-xs sm:text-sm text-slate-500 mt-1">
-            Enterprise registry of extracted marketing assertions, character spans, and verification provenance.
+          <p className="text-xs sm:text-sm text-slate-400 mt-1">
+            Enterprise registry of extracted marketing assertions, UTF-16 character spans, and RAG ground-truth provenance.
           </p>
         </div>
 
         <div className="flex items-center gap-2.5">
           <Button variant="outline" size="sm" onClick={loadClaims} isLoading={isLoading}>
+            <RefreshCw className="w-3.5 h-3.5 mr-1" />
             Refresh Ledger
           </Button>
         </div>
@@ -131,44 +142,44 @@ export default function ClaimsPage() {
 
       {/* Metrics Row */}
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-        <div className="p-4 bg-white rounded-xl border border-slate-200/80 shadow-2xs">
-          <div className="text-xs font-medium text-slate-500">Total Registered Claims</div>
-          <div className="text-2xl font-bold text-slate-900 mt-1">
+        <div className="p-4 rounded-xl border border-slate-800/80 bg-slate-900/60 backdrop-blur-md shadow-lg">
+          <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Total Registered Claims</div>
+          <div className="text-2xl sm:text-3xl font-extrabold text-white mt-1.5 tracking-tight">
             {isLoading ? "..." : totalCount}
           </div>
           <div className="text-[11px] text-slate-400 mt-1">Active claims in database</div>
         </div>
 
-        <div className="p-4 bg-white rounded-xl border border-slate-200/80 shadow-2xs">
-          <div className="text-xs font-medium text-slate-500">Unverified (Phase 4 Extracted)</div>
-          <div className="text-2xl font-bold text-indigo-600 mt-1">
+        <div className="p-4 rounded-xl border border-slate-800/80 bg-slate-900/60 backdrop-blur-md shadow-lg">
+          <div className="text-xs font-semibold text-violet-300 uppercase tracking-wider">Unverified Claims</div>
+          <div className="text-2xl sm:text-3xl font-extrabold text-violet-300 mt-1.5 tracking-tight">
             {isLoading ? "..." : unverifiedCount}
           </div>
-          <div className="text-[11px] text-slate-400 mt-1">Awaiting Phase 5 verification</div>
+          <div className="text-[11px] text-slate-400 mt-1">Awaiting RAG clinical verification</div>
         </div>
 
-        <div className="p-4 bg-white rounded-xl border border-slate-200/80 shadow-2xs">
-          <div className="text-xs font-medium text-slate-500">Fully Supported (Benchmark)</div>
-          <div className="text-2xl font-bold text-emerald-700 mt-1">
+        <div className="p-4 rounded-xl border border-slate-800/80 bg-slate-900/60 backdrop-blur-md shadow-lg">
+          <div className="text-xs font-semibold text-emerald-300 uppercase tracking-wider">Fully Supported</div>
+          <div className="text-2xl sm:text-3xl font-extrabold text-emerald-300 mt-1.5 tracking-tight">
             {isLoading ? "..." : supportedCount}
           </div>
           <div className="text-[11px] text-slate-400 mt-1">Backed by clinical dossiers</div>
         </div>
 
-        <div className="p-4 bg-white rounded-xl border border-slate-200/80 shadow-2xs">
-          <div className="text-xs font-medium text-slate-500">Contradicted / Needs Review</div>
-          <div className="text-2xl font-bold text-rose-700 mt-1">
+        <div className="p-4 rounded-xl border border-slate-800/80 bg-slate-900/60 backdrop-blur-md shadow-lg">
+          <div className="text-xs font-semibold text-rose-300 uppercase tracking-wider">Contradicted / Flagged</div>
+          <div className="text-2xl sm:text-3xl font-extrabold text-rose-300 mt-1.5 tracking-tight">
             {isLoading ? "..." : reviewCount}
           </div>
-          <div className="text-[11px] text-slate-400 mt-1">Requires copy adjustments</div>
+          <div className="text-[11px] text-slate-400 mt-1">Requires human review adjustments</div>
         </div>
       </div>
 
       {/* Error Alert */}
       {error && (
-        <div className="p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center justify-between">
+        <div className="p-4 rounded-xl bg-rose-950/40 border border-rose-800/60 text-rose-300 text-xs flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <AlertCircleIcon className="w-4 h-4 text-rose-600 shrink-0" />
+            <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
             <span>{error}</span>
           </div>
           <Button variant="outline" size="sm" onClick={loadClaims}>
@@ -181,7 +192,7 @@ export default function ClaimsPage() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-1">
         <div className="flex items-center gap-2 flex-wrap">
           {/* Claim Type Filter */}
-          <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-lg border border-slate-200 text-xs font-medium overflow-x-auto">
+          <div className="flex items-center gap-1 p-1 bg-slate-900/80 rounded-xl border border-slate-800 text-xs font-medium overflow-x-auto shadow-inner">
             {[
               { id: "all", label: "All Types" },
               { id: "product_attribute", label: "Product Attribute" },
@@ -194,10 +205,10 @@ export default function ClaimsPage() {
               <button
                 key={tab.id}
                 onClick={() => setTypeFilter(tab.id)}
-                className={`px-2.5 py-1 rounded-md transition-colors whitespace-nowrap cursor-pointer text-xs ${
+                className={`px-2.5 py-1 rounded-lg transition-all whitespace-nowrap cursor-pointer text-xs ${
                   typeFilter === tab.id
-                    ? "bg-white text-slate-900 font-semibold shadow-2xs"
-                    : "text-slate-600 hover:text-slate-900"
+                    ? "bg-violet-600 text-white font-semibold shadow-md shadow-violet-950/50"
+                    : "text-slate-400 hover:text-white hover:bg-slate-800/60"
                 }`}
               >
                 {tab.label}
@@ -209,7 +220,7 @@ export default function ClaimsPage() {
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+            className="px-3 py-1.5 text-xs bg-slate-900 border border-slate-700/80 rounded-xl text-slate-200 focus:outline-none focus:border-violet-500 cursor-pointer shadow-inner"
           >
             <option value="all">All Statuses</option>
             <option value="unverified">Unverified</option>
@@ -223,7 +234,7 @@ export default function ClaimsPage() {
           <select
             value={riskFilter}
             onChange={(e) => setRiskFilter(e.target.value)}
-            className="px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+            className="px-3 py-1.5 text-xs bg-slate-900 border border-slate-700/80 rounded-xl text-slate-200 focus:outline-none focus:border-violet-500 cursor-pointer shadow-inner"
           >
             <option value="all">All Risk Levels</option>
             <option value="critical">Critical Risk</option>
@@ -234,35 +245,36 @@ export default function ClaimsPage() {
         </div>
 
         {/* Search Input */}
-        <div className="w-full sm:w-64">
+        <div className="w-full sm:w-72 relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
           <input
             type="text"
             placeholder="Search claim text or product..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg text-slate-800 placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
+            className="w-full pl-9 pr-3 py-1.5 text-xs bg-slate-900 border border-slate-700/80 rounded-xl text-slate-100 placeholder-slate-500 focus:outline-none focus:border-violet-500 shadow-inner"
           />
         </div>
       </div>
 
       {/* Claims Table Card */}
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between pb-3">
+      <div className="rounded-xl border border-slate-800/80 bg-slate-900/60 backdrop-blur-md shadow-xl overflow-hidden">
+        <div className="p-5 border-b border-slate-800/80 flex flex-row items-center justify-between">
           <div>
-            <CardTitle>Extracted Claims Registry</CardTitle>
-            <CardDescription>
-              Factual statements extracted by AI engine with exact UTF-16 character positions
-            </CardDescription>
+            <h2 className="text-base font-bold text-white tracking-tight">Extracted Claims Registry</h2>
+            <p className="text-xs text-slate-400 mt-0.5">
+              Factual statements extracted by AI engine with exact UTF-16 character positions & clinical groundings.
+            </p>
           </div>
-          <span className="text-[11px] font-medium text-slate-400">
-            {filteredClaims.length} Claim(s)
+          <span className="text-[11px] font-semibold text-violet-300 bg-violet-950/60 border border-violet-800/60 px-2.5 py-0.5 rounded-full">
+            {filteredClaims.length} Claims Listed
           </span>
-        </CardHeader>
+        </div>
 
-        <CardContent className="p-0">
+        <div className="p-0">
           {isLoading ? (
             <div className="p-12 text-center text-xs text-slate-400">
-              <div className="w-6 h-6 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+              <div className="w-6 h-6 border-2 border-violet-500 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
               Loading claims from database...
             </div>
           ) : filteredClaims.length === 0 ? (
@@ -273,28 +285,28 @@ export default function ClaimsPage() {
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs border-collapse">
                 <thead>
-                  <tr className="border-b border-slate-100 bg-slate-50/70 text-slate-500 uppercase font-semibold text-[11px] tracking-wider">
+                  <tr className="border-b border-slate-800 bg-slate-950/50 text-slate-400 uppercase font-semibold text-[10px] tracking-wider">
                     <th className="py-3 px-4 sm:px-6">Extracted Marketing Claim</th>
                     <th className="py-3 px-4">Category</th>
-                    <th className="py-3 px-4">Status</th>
+                    <th className="py-3 px-4">Status & Risk</th>
                     <th className="py-3 px-4">AI Confidence</th>
                     <th className="py-3 px-4">Associated Product</th>
                     <th className="py-3 px-4 sm:px-6 text-right">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100 text-slate-700">
+                <tbody className="divide-y divide-slate-800/60 text-slate-200">
                   {filteredClaims.map((claim) => (
-                    <tr key={claim.id} className="hover:bg-slate-50/80 transition-colors">
+                    <tr key={claim.id} className="hover:bg-slate-800/40 transition-colors">
                       <td className="py-3.5 px-4 sm:px-6 max-w-md">
-                        <div className="font-semibold text-slate-900 leading-snug">
+                        <div className="font-semibold text-white leading-snug text-[13px]">
                           &ldquo;{claim.claim_text}&rdquo;
                         </div>
                         <div className="text-[11px] text-slate-400 mt-1 flex items-center gap-2">
-                          <span>Campaign: {claim.submission_title || "General"}</span>
+                          <span>Campaign: <strong className="text-slate-300 font-medium">{claim.submission_title || "General"}</strong></span>
                           {claim.text_start !== null && claim.text_end !== null && (
                             <>
                               <span>·</span>
-                              <span className="font-mono text-indigo-700 bg-indigo-50 px-1.5 py-0.2 rounded text-[10px]">
+                              <span className="font-mono text-cyan-300 bg-cyan-950/60 border border-cyan-800/50 px-1.5 py-0.2 rounded text-[10px]">
                                 span [{claim.text_start}..{claim.text_end}]
                               </span>
                             </>
@@ -303,7 +315,7 @@ export default function ClaimsPage() {
                       </td>
 
                       <td className="py-3.5 px-4">
-                        <span className="capitalize px-2 py-0.5 rounded bg-slate-100 text-slate-700 font-medium text-[11px] whitespace-nowrap">
+                        <span className="capitalize px-2 py-0.5 rounded-md bg-slate-800/80 border border-slate-700/60 text-slate-300 font-medium text-[11px] whitespace-nowrap">
                           {claim.claim_type.replace(/_/g, " ")}
                         </span>
                       </td>
@@ -321,22 +333,22 @@ export default function ClaimsPage() {
 
                       <td className="py-3.5 px-4">
                         <div className="flex items-center gap-2">
-                          <div className="w-16 bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                          <div className="w-16 bg-slate-800 rounded-full h-1.5 overflow-hidden">
                             <div
-                              className="h-full rounded-full bg-indigo-600"
+                              className="h-full rounded-full bg-gradient-to-r from-violet-500 to-cyan-400 shadow-[0_0_6px_rgba(6,182,212,0.4)]"
                               style={{ width: `${Math.round(claim.extraction_confidence * 100)}%` }}
                             />
                           </div>
-                          <span className="text-[11px] font-mono text-slate-600">
+                          <span className="text-[11px] font-mono text-slate-400">
                             {formatPercent(claim.extraction_confidence)}
                           </span>
                         </div>
                       </td>
 
-                      <td className="py-3.5 px-4 text-slate-600">
+                      <td className="py-3.5 px-4 text-slate-300">
                         {claim.product_name ? (
                           <div className="max-w-[160px] truncate">
-                            <span className="font-medium text-slate-800">{claim.product_name}</span>
+                            <span className="font-medium text-white">{claim.product_name}</span>
                             {claim.product_sku && (
                               <div className="text-[10px] text-slate-400 font-mono">
                                 {claim.product_sku}
@@ -344,7 +356,7 @@ export default function ClaimsPage() {
                             )}
                           </div>
                         ) : (
-                          <span className="text-slate-400 italic">Unassociated</span>
+                          <span className="text-slate-500 italic">Unassociated</span>
                         )}
                       </td>
 
@@ -373,8 +385,8 @@ export default function ClaimsPage() {
               </table>
             </div>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
       {/* Claim Detail Modal */}
       <ClaimDetailModal

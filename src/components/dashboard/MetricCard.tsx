@@ -13,13 +13,13 @@ export function MetricCard({ metric }: MetricCardProps) {
   const isSupported = metric.id === "supported-claims";
 
   return (
-    <Card className="p-5 flex flex-col justify-between hover:border-slate-300 transition-colors">
+    <Card className="p-5 flex flex-col justify-between hover:border-slate-700 transition-all bg-slate-900/60 backdrop-blur-md border border-slate-800/80 shadow-xl">
       <div className="flex items-center justify-between gap-2">
-        <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+        <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
           {metric.label}
         </span>
         {metric.isSample && (
-          <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 border border-slate-200">
+          <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-slate-800/80 text-slate-400 border border-slate-700/60">
             Sample
           </span>
         )}
@@ -30,10 +30,10 @@ export function MetricCard({ metric }: MetricCardProps) {
           className={cn(
             "text-2xl sm:text-3xl font-bold tracking-tight",
             isRequiresReview
-              ? "text-amber-600"
+              ? "text-amber-400"
               : isSupported
-              ? "text-emerald-700"
-              : "text-slate-900"
+              ? "text-emerald-400"
+              : "text-white"
           )}
         >
           {metric.value}
@@ -44,10 +44,10 @@ export function MetricCard({ metric }: MetricCardProps) {
             className={cn(
               "inline-flex items-center gap-0.5 text-xs font-semibold px-2 py-0.5 rounded-full border",
               isRequiresReview
-                ? "bg-amber-50 text-amber-800 border-amber-200"
+                ? "bg-amber-950/60 text-amber-300 border-amber-800/60"
                 : isSupported
-                ? "bg-emerald-50 text-emerald-800 border-emerald-200"
-                : "bg-slate-50 text-slate-700 border-slate-200"
+                ? "bg-emerald-950/60 text-emerald-300 border-emerald-800/60"
+                : "bg-slate-800/80 text-slate-300 border-slate-700/60"
             )}
           >
             <ArrowUpRightIcon className="w-3.5 h-3.5" />
@@ -57,7 +57,7 @@ export function MetricCard({ metric }: MetricCardProps) {
       </div>
 
       {metric.helperText && (
-        <p className="mt-2 text-xs text-slate-500">{metric.helperText}</p>
+        <p className="mt-2 text-xs text-slate-400">{metric.helperText}</p>
       )}
     </Card>
   );

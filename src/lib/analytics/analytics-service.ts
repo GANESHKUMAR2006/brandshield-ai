@@ -120,30 +120,30 @@ export class ComplianceAnalyticsService {
       }>(
         `SELECT 
           COUNT(c.id)::int as total_extracted,
-          COUNT(CASE WHEN c.is_active = true AND c.superseded_by IS NULL THEN 1 END)::int as active_claims,
-          COUNT(CASE WHEN c.is_active = false OR c.superseded_by IS NOT NULL THEN 1 END)::int as superseded_claims,
-          COUNT(CASE WHEN c.is_active = true AND c.superseded_by IS NULL AND (c.review_status IN ('pending', 'in_review') OR c.review_status IS NULL) THEN 1 END)::int as claims_awaiting_review,
+          COUNT(CASE WHEN c.is_active = true THEN 1 END)::int as active_claims,
+          COUNT(CASE WHEN c.is_active = false THEN 1 END)::int as superseded_claims,
+          COUNT(CASE WHEN c.is_active = true AND (c.review_status IN ('pending', 'in_review') OR c.review_status IS NULL) THEN 1 END)::int as claims_awaiting_review,
           -- Verification Status (Active Claims Only)
-          COUNT(CASE WHEN c.is_active = true AND c.superseded_by IS NULL AND c.verification_status = 'supported' THEN 1 END)::int as ver_supported,
-          COUNT(CASE WHEN c.is_active = true AND c.superseded_by IS NULL AND c.verification_status = 'contradicted' THEN 1 END)::int as ver_contradicted,
-          COUNT(CASE WHEN c.is_active = true AND c.superseded_by IS NULL AND c.verification_status = 'needs_review' THEN 1 END)::int as ver_needs_review,
-          COUNT(CASE WHEN c.is_active = true AND c.superseded_by IS NULL AND c.verification_status = 'unverified' THEN 1 END)::int as ver_unverified,
-          COUNT(CASE WHEN c.is_active = true AND c.superseded_by IS NULL AND c.verification_status = 'outdated' THEN 1 END)::int as ver_outdated,
+          COUNT(CASE WHEN c.is_active = true AND c.verification_status = 'supported' THEN 1 END)::int as ver_supported,
+          COUNT(CASE WHEN c.is_active = true AND c.verification_status = 'contradicted' THEN 1 END)::int as ver_contradicted,
+          COUNT(CASE WHEN c.is_active = true AND c.verification_status = 'needs_review' THEN 1 END)::int as ver_needs_review,
+          COUNT(CASE WHEN c.is_active = true AND c.verification_status = 'unverified' THEN 1 END)::int as ver_unverified,
+          COUNT(CASE WHEN c.is_active = true AND c.verification_status = 'outdated' THEN 1 END)::int as ver_outdated,
           -- Risk Levels (Active Claims Only)
-          COUNT(CASE WHEN c.is_active = true AND c.superseded_by IS NULL AND c.risk_level = 'low' THEN 1 END)::int as risk_low,
-          COUNT(CASE WHEN c.is_active = true AND c.superseded_by IS NULL AND c.risk_level = 'medium' THEN 1 END)::int as risk_medium,
-          COUNT(CASE WHEN c.is_active = true AND c.superseded_by IS NULL AND c.risk_level = 'high' THEN 1 END)::int as risk_high,
-          COUNT(CASE WHEN c.is_active = true AND c.superseded_by IS NULL AND c.risk_level = 'critical' THEN 1 END)::int as risk_critical,
-          COUNT(CASE WHEN c.is_active = true AND c.superseded_by IS NULL AND c.risk_level IS NULL THEN 1 END)::int as risk_unclassified,
+          COUNT(CASE WHEN c.is_active = true AND c.risk_level = 'low' THEN 1 END)::int as risk_low,
+          COUNT(CASE WHEN c.is_active = true AND c.risk_level = 'medium' THEN 1 END)::int as risk_medium,
+          COUNT(CASE WHEN c.is_active = true AND c.risk_level = 'high' THEN 1 END)::int as risk_high,
+          COUNT(CASE WHEN c.is_active = true AND c.risk_level = 'critical' THEN 1 END)::int as risk_critical,
+          COUNT(CASE WHEN c.is_active = true AND c.risk_level IS NULL THEN 1 END)::int as risk_unclassified,
           -- Review Status (Active Claims Only)
-          COUNT(CASE WHEN c.is_active = true AND c.superseded_by IS NULL AND (c.review_status = 'pending' OR c.review_status IS NULL) THEN 1 END)::int as rev_pending,
-          COUNT(CASE WHEN c.is_active = true AND c.superseded_by IS NULL AND c.review_status = 'in_review' THEN 1 END)::int as rev_in_review,
-          COUNT(CASE WHEN c.is_active = true AND c.superseded_by IS NULL AND c.review_status = 'approved' THEN 1 END)::int as rev_approved,
-          COUNT(CASE WHEN c.is_active = true AND c.superseded_by IS NULL AND c.review_status = 'rejected' THEN 1 END)::int as rev_rejected,
-          COUNT(CASE WHEN c.is_active = true AND c.superseded_by IS NULL AND c.review_status = 'modified' THEN 1 END)::int as rev_modified,
-          COUNT(CASE WHEN c.is_active = true AND c.superseded_by IS NULL AND c.review_status = 'escalated' THEN 1 END)::int as rev_escalated,
+          COUNT(CASE WHEN c.is_active = true AND (c.review_status = 'pending' OR c.review_status IS NULL) THEN 1 END)::int as rev_pending,
+          COUNT(CASE WHEN c.is_active = true AND c.review_status = 'in_review' THEN 1 END)::int as rev_in_review,
+          COUNT(CASE WHEN c.is_active = true AND c.review_status = 'approved' THEN 1 END)::int as rev_approved,
+          COUNT(CASE WHEN c.is_active = true AND c.review_status = 'rejected' THEN 1 END)::int as rev_rejected,
+          COUNT(CASE WHEN c.is_active = true AND c.review_status = 'modified' THEN 1 END)::int as rev_modified,
+          COUNT(CASE WHEN c.is_active = true AND c.review_status = 'escalated' THEN 1 END)::int as rev_escalated,
           -- Evidence Coverage (Active Claims with at least 1 linked evidence row)
-          COUNT(DISTINCT CASE WHEN c.is_active = true AND c.superseded_by IS NULL AND ce.id IS NOT NULL THEN c.id END)::int as active_with_evidence
+          COUNT(DISTINCT CASE WHEN c.is_active = true AND ce.id IS NOT NULL THEN c.id END)::int as active_with_evidence
          FROM claims c
          JOIN submissions s ON c.submission_id = s.id
          JOIN workspaces w ON s.workspace_id = w.id
@@ -263,7 +263,7 @@ export class ComplianceAnalyticsService {
           escalatedEvents: dData.escalated_events,
           overrideEvents: dData.override_events,
         },
-        avgTurnaroundHours: turnaroundRes.rows[0]?.avg_turnaround_hours || 0,
+        avgTurnaroundHours: Number(turnaroundRes.rows[0]?.avg_turnaround_hours) || 0,
         source: sData,
       });
     } catch {
@@ -339,7 +339,7 @@ export class ComplianceAnalyticsService {
          JOIN workspaces w ON s.workspace_id = w.id
          WHERE w.slug = $1
            AND c.is_active = true
-           AND c.superseded_by IS NULL
+          
            AND c.risk_level IN ('high', 'critical')
            AND (c.review_status IN ('pending', 'in_review') OR c.review_status IS NULL)
          LIMIT 5`,
@@ -437,7 +437,7 @@ export class ComplianceAnalyticsService {
          FROM products p
          JOIN workspaces w ON p.workspace_id = w.id
          JOIN submissions s ON s.product_id = p.id
-         JOIN claims c ON c.submission_id = s.id AND c.is_active = true AND c.superseded_by IS NULL
+         JOIN claims c ON c.submission_id = s.id AND c.is_active = true
          LEFT JOIN claim_evidence ce ON c.id = ce.claim_id
          WHERE w.slug = $1
          GROUP BY p.id, p.name
@@ -606,7 +606,7 @@ export class ComplianceAnalyticsService {
       escalationRate,
       modificationRate,
       evidenceCoveragePercentage,
-      averageReviewTurnaroundHours: Number(data.avgTurnaroundHours.toFixed(1)),
+      averageReviewTurnaroundHours: Number(Number(data.avgTurnaroundHours || 0).toFixed(1)),
       historicalDecisionEvents: historicalDecisions,
       decisionEventApprovalRate,
       sourceDocumentMetrics: {

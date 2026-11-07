@@ -66,10 +66,36 @@ export async function GET() {
       recentAuditEvents = [];
     }
 
-    // Backwards-compatible legacy stats structure
+    // 5. Query live database counts for products and approved facts
+    let totalProducts = 0;
+    let approvedFacts = 0;
+    try {
+      const countsRes = await query<{
+        total_products: number;
+        approved_facts: number;
+      }>(`
+        SELECT 
+          COUNT(DISTINCT p.id)::int as total_products,
+          COUNT(DISTINCT af.id)::int as approved_facts
+        FROM workspaces w
+        LEFT JOIN products p ON p.workspace_id = w.id
+        LEFT JOIN approved_facts af ON af.product_id = p.id AND af.approval_status = 'approved'
+        WHERE w.slug = $1
+      `, [session.workspaceSlug]);
+
+      if (countsRes.rows.length > 0) {
+        totalProducts = countsRes.rows[0].total_products;
+        approvedFacts = countsRes.rows[0].approved_facts;
+      }
+    } catch {
+      totalProducts = 0;
+      approvedFacts = 0;
+    }
+
+    // Backwards-compatible legacy stats structure with live database counts
     const legacyStats = {
-      total_products: 4,
-      approved_facts: 24,
+      total_products: totalProducts,
+      approved_facts: approvedFacts,
       source_documents: analytics.sourceDocumentMetrics.totalApproved,
       total_submissions: analytics.totalSubmissions,
       draft_submissions: analytics.draftSubmissions,

@@ -4,8 +4,7 @@ import React, { useState } from "react";
 import { Sidebar } from "./Sidebar";
 import { TopNav } from "./TopNav";
 import { MobileNav } from "./MobileNav";
-import { SAMPLE_DATA_NOTICE } from "@/config/sample-data";
-import { InfoIcon } from "@/components/ui/Icons";
+import { GuidedDemoBanner } from "@/components/demo/GuidedDemoBanner";
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -15,9 +14,19 @@ export function AppLayout({ children }: AppLayoutProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   return (
-    <div className="flex h-screen overflow-hidden bg-slate-50 text-slate-900">
+    <div className="relative flex h-screen overflow-hidden bg-[#090D16] text-slate-100">
+      {/* Ambient background glows matching Figma aesthetic */}
+      <div
+        className="absolute -top-32 left-1/4 w-[500px] h-[500px] bg-violet-600/10 rounded-full blur-[140px] pointer-events-none"
+        aria-hidden="true"
+      />
+      <div
+        className="absolute top-1/3 -right-20 w-[450px] h-[450px] bg-cyan-600/8 rounded-full blur-[150px] pointer-events-none"
+        aria-hidden="true"
+      />
+
       {/* Desktop Sidebar */}
-      <div className="hidden lg:flex lg:shrink-0">
+      <div className="hidden lg:flex lg:shrink-0 relative z-20">
         <Sidebar />
       </div>
 
@@ -25,28 +34,12 @@ export function AppLayout({ children }: AppLayoutProps) {
       <MobileNav isOpen={mobileMenuOpen} onClose={() => setMobileMenuOpen(false)} />
 
       {/* Main Content Area */}
-      <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
+      <div className="flex flex-col flex-1 min-w-0 overflow-hidden relative z-10">
         {/* Top Header */}
         <TopNav onOpenMobileMenu={() => setMobileMenuOpen(true)} />
 
-        {/* Synthetic / Demonstration Data Banner */}
-        <div className="bg-amber-50/90 border-b border-amber-200/80 px-4 py-2 sm:px-6">
-          <div className="flex items-center justify-between text-xs text-amber-900">
-            <div className="flex items-center gap-2">
-              <InfoIcon className="w-4 h-4 text-amber-700 shrink-0" />
-              <span className="font-semibold">{SAMPLE_DATA_NOTICE.label}:</span>
-              <span className="text-amber-800 hidden sm:inline">
-                {SAMPLE_DATA_NOTICE.description}
-              </span>
-              <span className="text-amber-800 sm:hidden">
-                Mock UI data active. Real-time verification disabled in Phase 1.
-              </span>
-            </div>
-            <span className="text-[11px] font-medium text-amber-700 shrink-0 ml-2 uppercase tracking-wider">
-              Phase 1 Preview
-            </span>
-          </div>
-        </div>
+        {/* Interactive Guided Demo Mode Banner */}
+        <GuidedDemoBanner />
 
         {/* Scrollable Page Body */}
         <main className="flex-1 overflow-y-auto px-4 py-6 sm:px-8 sm:py-8">

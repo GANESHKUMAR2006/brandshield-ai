@@ -685,3 +685,52 @@ export async function simulatePolicy(
   return json.data;
 }
 
+
+// ============================================================================
+// Phase 15: System Health & Diagnostics API Client
+// ============================================================================
+
+export interface SystemHealthData {
+  status: "ok" | "degraded" | "error";
+  application: {
+    name: string;
+    version: string;
+    environment: string;
+    timestamp: string;
+  };
+  services: {
+    database: {
+      name: string;
+      status: "connected" | "disconnected" | "unconfigured";
+      latencyMs?: number;
+      workspace: string;
+      error?: string;
+    };
+    ollama: {
+      name: string;
+      status: "connected" | "disconnected" | "unconfigured";
+      model: string;
+      modelInstalled?: boolean;
+      availableModels?: string[];
+      latencyMs?: number;
+      endpoint: string;
+      recoveryHint?: string;
+      error?: string;
+    };
+    verificationEngine: {
+      name: string;
+      status: "operational" | "degraded";
+      promptVersion: string;
+      deterministicOffsetCorrection: "active";
+      rulesCount: number;
+    };
+  };
+}
+
+export async function fetchSystemHealth(): Promise<SystemHealthData> {
+  const res = await fetch("/api/health", { cache: "no-store" });
+  if (!res.ok && res.status !== 503) {
+    throw new Error(`Health check request failed: ${res.statusText}`);
+  }
+  return await res.json();
+}

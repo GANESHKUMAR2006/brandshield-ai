@@ -58,6 +58,16 @@ BEGIN
     ALTER TABLE claim_evidence
       ADD COLUMN page_number INT;
   END IF;
+
+  -- Add table constraint requiring at least one valid evidence source
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.table_constraints
+    WHERE table_name = 'claim_evidence' AND constraint_name = 'chk_claim_evidence_source_present'
+  ) THEN
+    ALTER TABLE claim_evidence
+      ADD CONSTRAINT chk_claim_evidence_source_present
+      CHECK (document_version_id IS NOT NULL OR approved_fact_id IS NOT NULL);
+  END IF;
 END $$;
 
 -- 3. Indexes for evidence retrieval performance
@@ -68,14 +78,21 @@ CREATE INDEX IF NOT EXISTS idx_claim_evidence_stance ON claim_evidence(stance);
 -- 4. RLS Policy for claim_evidence write and read operations
 DO $$
 BEGIN
-  -- Drop obsolete single-tenant policy if exists
+  -- Drop obsolete legacy single-tenant INSERT policy if exists (actual live schema name)
+  IF EXISTS (
+    SELECT 1 FROM pg_policies WHERE tablename = 'claim_evidence' AND policyname = 'Authenticated users can insert claim evidence'
+  ) THEN
+    DROP POLICY "Authenticated users can insert claim evidence" ON claim_evidence;
+  END IF;
+
+  -- Also drop former draft policy name if present
   IF EXISTS (
     SELECT 1 FROM pg_policies WHERE tablename = 'claim_evidence' AND policyname = 'Authenticated workspace users can link claim evidence'
   ) THEN
     DROP POLICY "Authenticated workspace users can link claim evidence" ON claim_evidence;
   END IF;
 
-  -- Multi-tenant INSERT policy
+  -- Multi-tenant INSERT policy with NULL document_version_id support (Phase 12B.2 correction)
   IF NOT EXISTS (
     SELECT 1 FROM pg_policies WHERE tablename = 'claim_evidence' AND policyname = 'Authenticated users can link claim evidence in their workspace'
   ) THEN
@@ -94,18 +111,35 @@ BEGIN
             OR w.id::text = (auth.jwt() -> 'app_metadata' ->> 'workspace_id')
           )
         )
-        -- 2. Anti-cross-tenant leakage: Document version must belong to the SAME workspace as the claim
-        AND document_version_id IN (
-          SELECT dv.id FROM document_versions dv
-          JOIN source_documents sd ON dv.source_document_id = sd.id
-          JOIN claims c ON c.id = claim_evidence.claim_id
-          JOIN submissions s ON c.submission_id = s.id
-          WHERE sd.workspace_id = s.workspace_id
+        -- 2. Evidence source requirement: At least one valid evidence source must be provided
+        AND (document_version_id IS NOT NULL OR approved_fact_id IS NOT NULL)
+        -- 3. Anti-cross-tenant leakage: When document version is present, it must belong to the SAME workspace as the claim
+        AND (
+          document_version_id IS NULL
+          OR document_version_id IN (
+            SELECT dv.id FROM document_versions dv
+            JOIN source_documents sd ON dv.source_document_id = sd.id
+            JOIN claims c ON c.id = claim_evidence.claim_id
+            JOIN submissions s ON c.submission_id = s.id
+            WHERE sd.workspace_id = s.workspace_id
+          )
+        )
+        -- 4. Anti-cross-tenant leakage: When approved fact is present, it must belong to the SAME workspace as the claim
+        AND (
+          approved_fact_id IS NULL
+          OR approved_fact_id IN (
+            SELECT af.id FROM approved_facts af
+            JOIN products p ON af.product_id = p.id
+            JOIN claims c ON c.id = claim_evidence.claim_id
+            JOIN submissions s ON c.submission_id = s.id
+            WHERE p.workspace_id = s.workspace_id
+          )
         )
       );
   END IF;
 
   -- Multi-tenant SELECT policy
+  -- Note: Legacy 'Public read claim evidence' policy remains untouched to preserve unauthenticated read access for DermaGlow demo workflows.
   IF NOT EXISTS (
     SELECT 1 FROM pg_policies WHERE tablename = 'claim_evidence' AND policyname = 'Authenticated users can read claim evidence for their workspace'
   ) THEN

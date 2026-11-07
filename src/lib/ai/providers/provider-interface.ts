@@ -1,8 +1,9 @@
 /**
  * BrandShield AI — LLM Provider Interface
  * Phase 4: AI-Powered Marketing Claim Extraction Engine
+ * Phase 10D: Deterministic Claim Offset Correction
  *
- * Defines the contract that all LLM provider implementations (OpenAI, Anthropic, Mock)
+ * Defines the contract that all LLM provider implementations (OpenAI, HuggingFace, Ollama, Mock)
  * must implement to maintain decoupling from business logic.
  */
 
@@ -14,6 +15,22 @@ export interface ExtractionPromptContext {
   promptVersion?: string;
 }
 
+/**
+ * Raw claim structure as parsed directly from LLM response before offset normalization.
+ */
+export interface ModelClaimInput {
+  claim_text: string;
+  claim_type: string;
+  text_start?: number;
+  text_end?: number;
+  product_hint?: string | null;
+  entities?: Record<string, unknown>;
+  extraction_confidence?: number;
+}
+
+/**
+ * Validated claim output with verified UTF-16 character offsets.
+ */
 export interface RawClaimOutput {
   claim_text: string;
   claim_type: string;
