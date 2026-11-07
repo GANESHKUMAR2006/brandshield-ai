@@ -4,7 +4,7 @@ import { resolveServerSession } from "@/lib/auth/server-session";
 import { ReviewWorkflowService } from "@/lib/review/review-service";
 
 const submitDecisionSchema = z.object({
-  claimId: z.string().uuid("Invalid claim UUID"),
+  claimId: z.string().regex(/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/, "Invalid claim UUID"),
   decision: z.enum(["approved", "rejected", "escalated", "modified"]),
   comments: z.string().max(1000).optional(),
   overrideReason: z.string().max(1000).optional(),

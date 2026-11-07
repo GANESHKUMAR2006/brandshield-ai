@@ -53,14 +53,14 @@ export function SubmissionDetailModal({
   const [activeTab, setActiveTab] = useState<"current" | "history" | "claims">("current");
 
   const handleRunExtraction = async () => {
-    if (!details) return;
+    if (!details || isExtracting) return;
     setIsExtracting(true);
     setError(null);
     setSuccessMsg(null);
     try {
       const res = await extractClaims(details.id, {
         versionId: details.current_version_id || undefined,
-        forceReextract: true,
+        forceReextract: details.claims.length === 0,
       });
       setSuccessMsg(
         `AI Claim Extraction complete: identified ${res.claimsCount} claims in ${res.executionTimeMs}ms via ${res.provider} (${res.model}).`
@@ -298,7 +298,7 @@ export function SubmissionDetailModal({
                 <div className="flex items-center gap-2">
                   <span className="font-bold text-white">Publication Gate:</span>
                   <StatusPill status={details.publication_status || "ineligible"} />
-                  {details.status === "published" && (
+                  {(details.status === "published" || details.publication_status === "published") && (
                     <span className="px-2 py-0.5 rounded-full bg-emerald-950/80 text-emerald-300 border border-emerald-800/60 font-semibold text-[10px] shadow-[0_0_6px_rgba(52,211,153,0.3)]">
                       LIVE & PUBLISHED
                     </span>
@@ -312,7 +312,7 @@ export function SubmissionDetailModal({
               </div>
             </div>
 
-            {details.status !== "published" && (
+            {details.status !== "published" && details.publication_status !== "published" && (
               <Button
                 variant="primary"
                 size="sm"

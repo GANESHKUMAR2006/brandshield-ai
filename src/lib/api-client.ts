@@ -100,6 +100,8 @@ export interface LiveSubmission {
   content: string;
   channel: string;
   status: string;
+  publication_status?: string | null;
+  publicationStatus?: string | null;
   submitted_by: string;
   submission_date: string;
   created_at: string;

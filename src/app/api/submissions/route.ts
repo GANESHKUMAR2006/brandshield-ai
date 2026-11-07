@@ -3,11 +3,13 @@ import { query, withTransaction } from "@/lib/db/server-db";
 import { z } from "zod";
 import { resolveServerSession, AuthenticationRequiredError } from "@/lib/auth/server-session";
 
+const uuidRegex = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+
 const createSubmissionSchema = z.object({
   title: z.string().min(3, "Title must be at least 3 characters").max(200),
   content: z.string().min(5, "Content must be at least 5 characters"),
   channel: z.string().min(2, "Channel must be specified"),
-  productId: z.string().uuid("Invalid product ID").nullable().optional(),
+  productId: z.string().regex(uuidRegex, "Invalid product ID").nullable().optional(),
 });
 
 // GET /api/submissions

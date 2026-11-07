@@ -241,7 +241,7 @@ export default function SubmissionsPage() {
           </div>
         ) : (
           filteredSubmissions.map((sub) => {
-            const isPublished = sub.status === "published";
+            const isPublished = sub.status === "published" || sub.publication_status === "published";
             const isApproved = sub.status === "approved";
             const isBlocked = sub.review_claims_count > 0;
 

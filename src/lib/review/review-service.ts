@@ -241,6 +241,7 @@ export class ReviewWorkflowService {
     if (activeClaims.length === 0) {
       return {
         isEligible: false,
+        eligible: false,
         totalActiveClaims: 0,
         approvedClaims: 0,
         unreviewedClaims: 0,
@@ -336,6 +337,7 @@ export class ReviewWorkflowService {
 
     return {
       isEligible,
+      eligible: isEligible,
       totalActiveClaims: activeClaims.length,
       approvedClaims: approvedCount,
       unreviewedClaims: unreviewedCount,
@@ -789,12 +791,13 @@ export class ReviewWorkflowService {
       const submission = subRes.rows[0];
 
       // Phase 15 Resilience: Idempotent publication check
-      if (submission.status === "published") {
+      if (submission.publication_status === "published" || submission.status === "published") {
         return {
           submissionId: submission.id,
           title: submission.title,
-          status: "published",
-          publicationStatus: submission.publication_status,
+          status: "approved",
+          publicationStatus: "published",
+          publication_status: "published",
           publishedAt: new Date().toISOString(),
           alreadyPublished: true,
         };
@@ -882,10 +885,10 @@ export class ReviewWorkflowService {
         );
       }
 
-      // 6. Update submission to published with full compilation snapshot
+      // 6. Update submission to approved and published with full compilation snapshot
       await client.query(
         `UPDATE submissions
-         SET status = 'published',
+         SET status = 'approved',
              publication_status = 'published',
              publication_eligibility_details = $1,
              last_reviewed_at = now(),
@@ -893,7 +896,11 @@ export class ReviewWorkflowService {
          WHERE id = $2`,
         [
           JSON.stringify({
-            eligibility,
+            eligibility: {
+              ...eligibility,
+              isEligible: eligibility.isEligible,
+              eligible: eligibility.isEligible,
+            },
             compilation: {
               versionNumber: compilation.versionNumber,
               approvedClaimIds: compilation.approvedClaimIds,
@@ -926,7 +933,7 @@ export class ReviewWorkflowService {
             publication_status: submission.publication_status,
           }),
           JSON.stringify({
-            status: "published",
+            status: "approved",
             publication_status: "published",
             published_by: session.userName,
             reviewer_role: session.role,
@@ -940,11 +947,16 @@ export class ReviewWorkflowService {
       return {
         submissionId: submission.id,
         title: submission.title,
-        status: "published",
+        status: "approved",
         publicationStatus: "published",
+        publication_status: "published",
         publishedAt: new Date().toISOString(),
         publishedBy: session.userName,
-        eligibility,
+        eligibility: {
+          ...eligibility,
+          isEligible: eligibility.isEligible,
+          eligible: eligibility.isEligible,
+        },
         compilation,
       };
     });

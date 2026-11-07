@@ -317,7 +317,7 @@ export default function DashboardPage() {
                   </thead>
                   <tbody className="divide-y divide-slate-800/60 text-slate-300">
                     {recentSubs.map((sub) => {
-                      const isPublished = sub.status === "published";
+                      const isPublished = sub.status === "published" || sub.publication_status === "published";
                       const isApproved = sub.status === "approved";
                       const isBlocked = sub.publication_status === "ineligible" || sub.review_required_claims > 0;
 

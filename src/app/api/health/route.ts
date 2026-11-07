@@ -127,9 +127,21 @@ export async function GET(): Promise<NextResponse<ComprehensiveHealthResponse>> 
   const engineStatus: "operational" | "degraded" =
     dbStatus === "connected" ? "operational" : "degraded";
 
+  // Active LLM Provider Check
+  const activeLlmProvider = (process.env.LLM_PROVIDER || "groq").trim().toLowerCase();
+  const isGroqActive = activeLlmProvider === "groq";
+  const isGroqConfigured = Boolean(
+    process.env.GROQ_API_KEY &&
+    !process.env.GROQ_API_KEY.includes("placeholder")
+  );
+
+  const activeLlmStatus = isGroqActive
+    ? isGroqConfigured ? "connected" : "disconnected"
+    : ollamaStatus === "connected" && modelInstalled ? "connected" : "disconnected";
+
   // Overall status evaluation
   const overallStatus: "ok" | "degraded" | "error" =
-    dbStatus === "connected" && ollamaStatus === "connected" && modelInstalled
+    dbStatus === "connected" && activeLlmStatus === "connected"
       ? "ok"
       : dbStatus === "connected"
       ? "degraded"

@@ -19,6 +19,7 @@ export async function POST(
 
     return NextResponse.json({ data: results }, { status: 200 });
   } catch (err: unknown) {
+    console.error("Verification route error:", err);
     const message = err instanceof Error ? err.message : "Internal verification error";
     const status = message.includes("not found") ? 404 : 500;
 

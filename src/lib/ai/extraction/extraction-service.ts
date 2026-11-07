@@ -12,6 +12,7 @@ import { ClaimValidator, ValidationReport } from "../validation/claim-validator"
 import { ExtractionNormalizer } from "./extraction-normalizer";
 import { query, withTransaction } from "@/lib/db/server-db";
 import { EXTRACTION_PROMPT_VERSION } from "./extraction-prompt";
+import { ClaimType } from "./extraction-schema";
 
 export interface ExtractOptions {
   versionId?: string;
@@ -110,7 +111,73 @@ export class ExtractionService {
     // 4. Resolve LLM provider
     const provider = options?.providerOverride || getConfiguredProvider();
 
-    // 5. Initialise extraction run record
+    // 5. Cache & Duplicate Request Guard: If active claims already exist for this exact version and forceReextract is not requested, return persisted claims
+    if (!options?.forceReextract) {
+      const existingClaimsRes = await query<{
+        id: string;
+        claim_text: string;
+        claim_type: string;
+        text_start: number;
+        text_end: number;
+        product_id: string | null;
+        extracted_entities: Record<string, unknown>;
+        extraction_confidence: number;
+        verification_status: string;
+      }>(
+        `SELECT id, claim_text, claim_type, text_start, text_end, product_id,
+                extracted_entities, extraction_confidence, verification_status
+         FROM claims
+         WHERE submission_version_id = $1 AND is_active = true
+         ORDER BY text_start ASC`,
+        [version.id]
+      );
+
+      if (existingClaimsRes.rows.length > 0) {
+        const lastRunRes = await query<{
+          id: string;
+          provider: string;
+          model_identifier: string;
+          prompt_version: string;
+        }>(
+          `SELECT id, provider, model_identifier, prompt_version
+           FROM extraction_runs
+           WHERE submission_version_id = $1 AND status = 'completed'
+           ORDER BY completed_at DESC
+           LIMIT 1`,
+          [version.id]
+        );
+        const lastRun = lastRunRes.rows[0];
+
+        return {
+          runId: lastRun?.id || "cached-run",
+          submissionId: submission.id,
+          versionId: version.id,
+          versionNumber: version.version_number,
+          provider: lastRun?.provider || provider.providerName,
+          model: lastRun?.model_identifier || provider.modelIdentifier,
+          promptVersion: lastRun?.prompt_version || EXTRACTION_PROMPT_VERSION,
+          claimsCount: existingClaimsRes.rows.length,
+          claims: existingClaimsRes.rows,
+          validationReport: {
+            success: true,
+            validatedClaims: existingClaimsRes.rows.map((c) => ({
+              claim_text: c.claim_text,
+              claim_type: c.claim_type as ClaimType,
+              text_start: c.text_start,
+              text_end: c.text_end,
+              product_hint: null,
+              entities: c.extracted_entities,
+              extraction_confidence: c.extraction_confidence,
+            })),
+            rejectedClaims: [],
+            validationErrors: [],
+          },
+          executionTimeMs: Date.now() - startTime,
+        };
+      }
+    }
+
+    // 6. Initialise extraction run record
     const runRes = await query<{ id: string }>(
       `INSERT INTO extraction_runs (
         workspace_id,

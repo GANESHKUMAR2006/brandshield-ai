@@ -46,7 +46,11 @@ export async function GET(
       title: subRes.rows[0].title,
       status: subRes.rows[0].status,
       publicationStatus: subRes.rows[0].publication_status,
-      eligibility,
+      publication_status: subRes.rows[0].publication_status,
+      eligibility: {
+        ...eligibility,
+        eligible: eligibility.isEligible,
+      },
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Failed to retrieve publication status";

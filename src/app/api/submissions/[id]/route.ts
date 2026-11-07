@@ -20,7 +20,7 @@ const updateSubmissionSchema = z.object({
       "changes_requested",
     ])
     .optional(),
-  productId: z.string().uuid().nullable().optional(),
+  productId: z.string().regex(/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/, "Invalid product UUID").nullable().optional(),
 });
 
 // GET /api/submissions/[id]
@@ -78,7 +78,10 @@ export async function GET(
 
     const latestVersion = versionsRes.rows[versionsRes.rows.length - 1];
 
-    // 3. Fetch associated active claims and evidence
+    const { searchParams } = new URL(request.url);
+    const includeInactive = searchParams.get("includeInactive") === "true";
+
+    // 3. Fetch associated claims and evidence
     const claimsRes = await query(
       `SELECT 
         c.id,
@@ -87,6 +90,7 @@ export async function GET(
         c.claim_type,
         c.text_start,
         c.text_end,
+        c.is_active,
         c.product_id,
         c.extracted_entities,
         c.extraction_confidence,
@@ -103,7 +107,7 @@ export async function GET(
         c.original_claim_id,
         c.created_at
        FROM claims c
-       WHERE c.submission_id = $1 AND c.is_active = true
+       WHERE c.submission_id = $1 ${includeInactive ? "" : "AND c.is_active = true"}
        ORDER BY c.created_at ASC;`,
       [id]
     );

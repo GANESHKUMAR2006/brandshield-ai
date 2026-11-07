@@ -203,6 +203,11 @@ export class VerificationEngine {
 
       // B. Insert claim_evidence links
       for (const match of ruleResult.evidenceMatches) {
+        // chk_claim_evidence_source_present requires at least one of approved_fact_id or document_version_id
+        if (!match.approvedFactId && !match.documentVersionId) {
+          continue;
+        }
+
         await client.query(
           `INSERT INTO claim_evidence (
             claim_id,

@@ -224,6 +224,7 @@ export type PublicationStatus = "ineligible" | "eligible" | "published";
 
 export interface PublicationEligibilityDetails {
   isEligible: boolean;
+  eligible?: boolean;
   totalActiveClaims: number;
   approvedClaims: number;
   unreviewedClaims: number;

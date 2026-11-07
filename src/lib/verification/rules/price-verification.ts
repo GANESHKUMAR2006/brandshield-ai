@@ -58,14 +58,14 @@ export function verifyPriceClaim(context: VerificationContext): RuleResult {
 
   // 3. Retrieve catalogue reference price
   const cataloguePriceFact = approvedFacts.find((f) => f.fact_key === "reference_price");
-  let referencePrice = product.reference_price;
+  let referencePrice = Number(product.reference_price) || 0;
   let factId: string | null = null;
 
   if (cataloguePriceFact && EvidenceValidator.isFactValid(cataloguePriceFact, effectiveDate)) {
     factId = cataloguePriceFact.id;
     const mrp = (cataloguePriceFact.fact_value as Record<string, unknown>).mrp;
-    if (typeof mrp === "number") {
-      referencePrice = mrp;
+    if (mrp !== null && mrp !== undefined) {
+      referencePrice = Number(mrp);
     }
   }
 
@@ -81,13 +81,18 @@ export function verifyPriceClaim(context: VerificationContext): RuleResult {
 
   // Case A: Advertised price matches active promotion
   for (const promo of activePromotions) {
-    let expectedPrice = promo.resulting_price;
+    let expectedPrice = promo.resulting_price !== null && promo.resulting_price !== undefined
+      ? Number(promo.resulting_price)
+      : null;
 
-    if (!expectedPrice) {
+    if (expectedPrice === null || isNaN(expectedPrice)) {
+      const discountVal = Number(promo.discount_value) || 0;
       if (promo.discount_type === "fixed") {
-        expectedPrice = referencePrice - promo.discount_value;
+        expectedPrice = referencePrice - discountVal;
       } else if (promo.discount_type === "percentage") {
-        expectedPrice = referencePrice * (1 - promo.discount_value / 100);
+        expectedPrice = referencePrice * (1 - discountVal / 100);
+      } else {
+        expectedPrice = referencePrice;
       }
     }
 

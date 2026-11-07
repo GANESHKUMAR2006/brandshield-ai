@@ -3,7 +3,7 @@ import { z } from "zod";
 import { ExtractionService } from "@/lib/ai/extraction/extraction-service";
 
 const ExtractRequestSchema = z.object({
-  versionId: z.string().uuid("Invalid version UUID").optional(),
+  versionId: z.string().regex(/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/, "Invalid version UUID").optional(),
   forceReextract: z.boolean().optional().default(false),
 });
 

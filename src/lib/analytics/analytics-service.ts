@@ -119,29 +119,29 @@ export class ComplianceAnalyticsService {
         active_with_evidence: number;
       }>(
         `SELECT 
-          COUNT(c.id)::int as total_extracted,
-          COUNT(CASE WHEN c.is_active = true THEN 1 END)::int as active_claims,
-          COUNT(CASE WHEN c.is_active = false THEN 1 END)::int as superseded_claims,
-          COUNT(CASE WHEN c.is_active = true AND (c.review_status IN ('pending', 'in_review') OR c.review_status IS NULL) THEN 1 END)::int as claims_awaiting_review,
+          COUNT(DISTINCT c.id)::int as total_extracted,
+          COUNT(DISTINCT CASE WHEN c.is_active = true THEN c.id END)::int as active_claims,
+          COUNT(DISTINCT CASE WHEN c.is_active = false THEN c.id END)::int as superseded_claims,
+          COUNT(DISTINCT CASE WHEN c.is_active = true AND (c.review_status IN ('pending', 'in_review') OR c.review_status IS NULL) THEN c.id END)::int as claims_awaiting_review,
           -- Verification Status (Active Claims Only)
-          COUNT(CASE WHEN c.is_active = true AND c.verification_status = 'supported' THEN 1 END)::int as ver_supported,
-          COUNT(CASE WHEN c.is_active = true AND c.verification_status = 'contradicted' THEN 1 END)::int as ver_contradicted,
-          COUNT(CASE WHEN c.is_active = true AND c.verification_status = 'needs_review' THEN 1 END)::int as ver_needs_review,
-          COUNT(CASE WHEN c.is_active = true AND c.verification_status = 'unverified' THEN 1 END)::int as ver_unverified,
-          COUNT(CASE WHEN c.is_active = true AND c.verification_status = 'outdated' THEN 1 END)::int as ver_outdated,
+          COUNT(DISTINCT CASE WHEN c.is_active = true AND c.verification_status = 'supported' THEN c.id END)::int as ver_supported,
+          COUNT(DISTINCT CASE WHEN c.is_active = true AND c.verification_status = 'contradicted' THEN c.id END)::int as ver_contradicted,
+          COUNT(DISTINCT CASE WHEN c.is_active = true AND c.verification_status = 'needs_review' THEN c.id END)::int as ver_needs_review,
+          COUNT(DISTINCT CASE WHEN c.is_active = true AND c.verification_status = 'unverified' THEN c.id END)::int as ver_unverified,
+          COUNT(DISTINCT CASE WHEN c.is_active = true AND c.verification_status = 'outdated' THEN c.id END)::int as ver_outdated,
           -- Risk Levels (Active Claims Only)
-          COUNT(CASE WHEN c.is_active = true AND c.risk_level = 'low' THEN 1 END)::int as risk_low,
-          COUNT(CASE WHEN c.is_active = true AND c.risk_level = 'medium' THEN 1 END)::int as risk_medium,
-          COUNT(CASE WHEN c.is_active = true AND c.risk_level = 'high' THEN 1 END)::int as risk_high,
-          COUNT(CASE WHEN c.is_active = true AND c.risk_level = 'critical' THEN 1 END)::int as risk_critical,
-          COUNT(CASE WHEN c.is_active = true AND c.risk_level IS NULL THEN 1 END)::int as risk_unclassified,
+          COUNT(DISTINCT CASE WHEN c.is_active = true AND c.risk_level = 'low' THEN c.id END)::int as risk_low,
+          COUNT(DISTINCT CASE WHEN c.is_active = true AND c.risk_level = 'medium' THEN c.id END)::int as risk_medium,
+          COUNT(DISTINCT CASE WHEN c.is_active = true AND c.risk_level = 'high' THEN c.id END)::int as risk_high,
+          COUNT(DISTINCT CASE WHEN c.is_active = true AND c.risk_level = 'critical' THEN c.id END)::int as risk_critical,
+          COUNT(DISTINCT CASE WHEN c.is_active = true AND c.risk_level IS NULL THEN c.id END)::int as risk_unclassified,
           -- Review Status (Active Claims Only)
-          COUNT(CASE WHEN c.is_active = true AND (c.review_status = 'pending' OR c.review_status IS NULL) THEN 1 END)::int as rev_pending,
-          COUNT(CASE WHEN c.is_active = true AND c.review_status = 'in_review' THEN 1 END)::int as rev_in_review,
-          COUNT(CASE WHEN c.is_active = true AND c.review_status = 'approved' THEN 1 END)::int as rev_approved,
-          COUNT(CASE WHEN c.is_active = true AND c.review_status = 'rejected' THEN 1 END)::int as rev_rejected,
-          COUNT(CASE WHEN c.is_active = true AND c.review_status = 'modified' THEN 1 END)::int as rev_modified,
-          COUNT(CASE WHEN c.is_active = true AND c.review_status = 'escalated' THEN 1 END)::int as rev_escalated,
+          COUNT(DISTINCT CASE WHEN c.is_active = true AND (c.review_status = 'pending' OR c.review_status IS NULL) THEN c.id END)::int as rev_pending,
+          COUNT(DISTINCT CASE WHEN c.is_active = true AND c.review_status = 'in_review' THEN c.id END)::int as rev_in_review,
+          COUNT(DISTINCT CASE WHEN c.is_active = true AND c.review_status = 'approved' THEN c.id END)::int as rev_approved,
+          COUNT(DISTINCT CASE WHEN c.is_active = true AND c.review_status = 'rejected' THEN c.id END)::int as rev_rejected,
+          COUNT(DISTINCT CASE WHEN c.is_active = true AND c.review_status = 'modified' THEN c.id END)::int as rev_modified,
+          COUNT(DISTINCT CASE WHEN c.is_active = true AND c.review_status = 'escalated' THEN c.id END)::int as rev_escalated,
           -- Evidence Coverage (Active Claims with at least 1 linked evidence row)
           COUNT(DISTINCT CASE WHEN c.is_active = true AND ce.id IS NOT NULL THEN c.id END)::int as active_with_evidence
          FROM claims c
