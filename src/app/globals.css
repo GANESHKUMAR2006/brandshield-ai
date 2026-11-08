@@ -68,3 +68,26 @@ body {
 .glow-cyan {
   box-shadow: 0 0 25px -5px rgba(6, 182, 212, 0.25);
 }
+
+/* Deterministic Verification Chain Layout */
+.verification-flow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+}
+
+.verification-card {
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+@media (max-width: 639px) {
+  .verification-flow {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+}
