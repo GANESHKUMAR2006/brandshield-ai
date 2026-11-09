@@ -584,12 +584,14 @@ export async function fetchAuditEvents(filters?: {
 export async function fetchPolicies(filters?: {
   category?: string;
   status?: string;
+  severity?: string;
   productId?: string;
   search?: string;
 }): Promise<{ data: import("@/types").Policy[]; total: number }> {
   const params = new URLSearchParams();
   if (filters?.category) params.set("category", filters.category);
   if (filters?.status) params.set("status", filters.status);
+  if (filters?.severity) params.set("severity", filters.severity);
   if (filters?.productId) params.set("productId", filters.productId);
   if (filters?.search) params.set("search", filters.search);
 
@@ -615,6 +617,7 @@ export async function createPolicy(data: {
   code: string;
   description?: string;
   category: import("@/types").PolicyCategory;
+  severity?: import("@/types").RuleSeverity;
   productId?: string | null;
   rules?: import("@/types").PolicyRule[];
   validFrom?: string;
@@ -676,6 +679,79 @@ export async function archivePolicy(policyId: string): Promise<import("@/types")
   const json = await res.json();
   if (!res.ok) {
     throw new Error(json.error || "Failed to archive policy");
+  }
+  return json.data;
+}
+
+export async function updateDraftPolicy(
+  policyId: string,
+  data: {
+    name?: string;
+    description?: string;
+    category?: import("@/types").PolicyCategory;
+    severity?: import("@/types").RuleSeverity;
+    productId?: string | null;
+    rules?: import("@/types").PolicyRule[];
+    validFrom?: string;
+    validUntil?: string | null;
+  }
+): Promise<import("@/types").Policy> {
+  const res = await fetch(`/api/policies/${policyId}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  const json = await res.json();
+  if (!res.ok) {
+    throw new Error(json.error || "Failed to update policy");
+  }
+  return json.data;
+}
+
+export async function rollbackPolicyVersion(
+  policyId: string,
+  targetVersionNumber: number
+): Promise<import("@/types").Policy> {
+  const res = await fetch(`/api/policies/${policyId}/rollback`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ targetVersionNumber }),
+  });
+  const json = await res.json();
+  if (!res.ok) {
+    throw new Error(json.error || "Failed to rollback policy version");
+  }
+  return json.data;
+}
+
+export async function duplicatePolicy(
+  sourcePolicyId: string,
+  newCode: string,
+  newName: string
+): Promise<import("@/types").Policy> {
+  const res = await fetch(`/api/policies/${sourcePolicyId}/duplicate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ newCode, newName }),
+  });
+  const json = await res.json();
+  if (!res.ok) {
+    throw new Error(json.error || "Failed to duplicate policy");
+  }
+  return json.data;
+}
+
+export async function validatePolicyRulesApi(
+  policyData: unknown
+): Promise<{ isValid: boolean; issues: { path: string; code: string; message: string }[] }> {
+  const res = await fetch("/api/policies/validate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(policyData),
+  });
+  const json = await res.json();
+  if (!res.ok) {
+    throw new Error(json.error || "Failed to validate policy rules");
   }
   return json.data;
 }

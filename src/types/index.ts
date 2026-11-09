@@ -341,8 +341,12 @@ export type AuditActionType =
   | "publication_status_updated"
   | "policy_created"
   | "policy_updated"
+  | "policy_validated"
   | "policy_activated"
   | "policy_archived"
+  | "policy_rollback"
+  | "policy_duplicated"
+  | "policy_unauthorized_mutation_attempt"
   | "policy_overridden";
 
 export interface AuditEventRecord {
@@ -482,10 +486,22 @@ export type PolicyCategory =
 export type RuleSeverity = "low" | "medium" | "high" | "critical";
 
 export type RuleConditionOperator =
-  | "contains_phrase"
-  | "matches_regex"
+  // Standard Phase 3 Operators
   | "equals"
   | "not_equals"
+  | "contains"
+  | "not_contains"
+  | "greater_than"
+  | "less_than"
+  | "greater_than_or_equal"
+  | "less_than_or_equal"
+  | "exists"
+  | "does_not_exist"
+  | "in"
+  | "not_in"
+  // Legacy & Specialized Operators for Backward Compatibility
+  | "contains_phrase"
+  | "matches_regex"
   | "in_list"
   | "not_in_list"
   | "lacks_evidence_type"
@@ -498,12 +514,20 @@ export type PolicyRuleAction =
   | "flag_violation"
   | "require_evidence"
   | "require_human_review"
-  | "block_publication";
+  | "block_publication"
+  | "display_warning";
+
+export type LogicalOperator = "AND" | "OR" | "NOT" | "ALL" | "ANY";
 
 export interface PolicyCondition {
-  field: "claim_text" | "claim_type" | "product_id" | "channel" | "extracted_entities" | "evidence_types" | "disclaimer";
+  field: string;
   operator: RuleConditionOperator;
-  value: string | string[] | number | boolean;
+  value?: string | string[] | number | boolean | null;
+}
+
+export interface PolicyConditionGroup {
+  logic: LogicalOperator;
+  conditions: (PolicyCondition | PolicyConditionGroup)[];
 }
 
 export interface PolicyRule {
@@ -512,17 +536,18 @@ export interface PolicyRule {
   description: string;
   category: PolicyCategory;
   severity: RuleSeverity;
-  conditions: PolicyCondition[];
-  logic: "ALL" | "ANY";
+  conditions: (PolicyCondition | PolicyConditionGroup)[];
+  logic?: LogicalOperator;
   action: PolicyRuleAction;
   requiredEvidenceTypes?: string[];
   mandatoryReviewerRole?: ReviewerRole;
   suggestedCorrection?: string;
   explanationTemplate: string;
+  applicableClaimTypes?: string[];
 }
 
 export type PolicyStatus = "draft" | "active" | "archived";
-export type PolicyVersionStatus = "draft" | "active" | "archived" | "superseded";
+export type PolicyVersionStatus = "draft" | "validated" | "active" | "archived" | "superseded";
 
 export interface PolicyVersion {
   id: string;
@@ -550,6 +575,7 @@ export interface Policy {
   code: string;
   description?: string | null;
   category: PolicyCategory;
+  severity?: RuleSeverity;
   status: PolicyStatus;
   active_version_id?: string | null;
   active_version_number?: number | null;
@@ -573,6 +599,7 @@ export interface TriggeredRule {
   severity: RuleSeverity;
   action: PolicyRuleAction;
   matchedConditions: string[];
+  failedConditions?: string[];
   requiredEvidenceTypes: string[];
   mandatoryReviewerRole?: ReviewerRole;
   explanation: string;
@@ -624,6 +651,7 @@ export interface PolicySimulationResult {
     complianceStatus: PolicyComplianceStatus;
     maxSeverity: RuleSeverity | null;
     triggeredRules: TriggeredRule[];
+    failedConditions?: string[];
     requiredEvidenceTypes: string[];
     mandatoryReviewerRoles: ReviewerRole[];
     summary: string;

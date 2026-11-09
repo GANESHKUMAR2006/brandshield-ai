@@ -133,6 +133,16 @@ export class PolicyEngine {
       const rules: PolicyRule[] = effectiveVersion.rules || [];
 
       for (const rule of rules) {
+        // Check applicable claim types if specified
+        if (
+          rule.applicableClaimTypes &&
+          rule.applicableClaimTypes.length > 0 &&
+          !rule.applicableClaimTypes.includes("all") &&
+          !rule.applicableClaimTypes.includes(claimContext.claimType)
+        ) {
+          continue;
+        }
+
         const evalRes = RuleEvaluator.evaluateRule(rule, claimContext, {
           policyId: policy.id,
           policyCode: policy.code,
@@ -155,7 +165,10 @@ export class PolicyEngine {
     // 1. Determine compliance status
     let complianceStatus: PolicyComplianceStatus = "compliant";
     const hasViolation = triggeredRules.some(
-      (r) => r.action === "flag_violation" || r.severity === "critical"
+      (r) =>
+        r.action === "flag_violation" ||
+        r.action === "block_publication" ||
+        r.severity === "critical"
     );
     const requiresReview = triggeredRules.some(
       (r) =>
