@@ -584,12 +584,14 @@ export async function fetchAuditEvents(filters?: {
 export async function fetchPolicies(filters?: {
   category?: string;
   status?: string;
+  severity?: string;
   productId?: string;
   search?: string;
 }): Promise<{ data: import("@/types").Policy[]; total: number }> {
   const params = new URLSearchParams();
   if (filters?.category) params.set("category", filters.category);
   if (filters?.status) params.set("status", filters.status);
+  if (filters?.severity) params.set("severity", filters.severity);
   if (filters?.productId) params.set("productId", filters.productId);
   if (filters?.search) params.set("search", filters.search);
 
@@ -615,6 +617,7 @@ export async function createPolicy(data: {
   code: string;
   description?: string;
   category: import("@/types").PolicyCategory;
+  severity?: import("@/types").RuleSeverity;
   productId?: string | null;
   rules?: import("@/types").PolicyRule[];
   validFrom?: string;
@@ -676,6 +679,79 @@ export async function archivePolicy(policyId: string): Promise<import("@/types")
   const json = await res.json();
   if (!res.ok) {
     throw new Error(json.error || "Failed to archive policy");
+  }
+  return json.data;
+}
+
+export async function updateDraftPolicy(
+  policyId: string,
+  data: {
+    name?: string;
+    description?: string;
+    category?: import("@/types").PolicyCategory;
+    severity?: import("@/types").RuleSeverity;
+    productId?: string | null;
+    rules?: import("@/types").PolicyRule[];
+    validFrom?: string;
+    validUntil?: string | null;
+  }
+): Promise<import("@/types").Policy> {
+  const res = await fetch(`/api/policies/${policyId}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  const json = await res.json();
+  if (!res.ok) {
+    throw new Error(json.error || "Failed to update policy");
+  }
+  return json.data;
+}
+
+export async function rollbackPolicyVersion(
+  policyId: string,
+  targetVersionNumber: number
+): Promise<import("@/types").Policy> {
+  const res = await fetch(`/api/policies/${policyId}/rollback`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ targetVersionNumber }),
+  });
+  const json = await res.json();
+  if (!res.ok) {
+    throw new Error(json.error || "Failed to rollback policy version");
+  }
+  return json.data;
+}
+
+export async function duplicatePolicy(
+  sourcePolicyId: string,
+  newCode: string,
+  newName: string
+): Promise<import("@/types").Policy> {
+  const res = await fetch(`/api/policies/${sourcePolicyId}/duplicate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ newCode, newName }),
+  });
+  const json = await res.json();
+  if (!res.ok) {
+    throw new Error(json.error || "Failed to duplicate policy");
+  }
+  return json.data;
+}
+
+export async function validatePolicyRulesApi(
+  policyData: unknown
+): Promise<{ isValid: boolean; issues: { path: string; code: string; message: string }[] }> {
+  const res = await fetch("/api/policies/validate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(policyData),
+  });
+  const json = await res.json();
+  if (!res.ok) {
+    throw new Error(json.error || "Failed to validate policy rules");
   }
   return json.data;
 }
@@ -744,3 +820,241 @@ export async function fetchSystemHealth(): Promise<SystemHealthData> {
   }
   return await res.json();
 }
+
+
+// ============================================================================
+// Phase 1: Enterprise Multi-Tenancy & Workspace Memberships Client
+// ============================================================================
+
+export interface WorkspaceItem {
+  id: string;
+  name: string;
+  slug: string;
+  role: string;
+  status: string;
+  createdAt: string;
+  memberCount: number;
+  submissionCount?: number;
+}
+
+export interface WorkspaceMemberItem {
+  id: string;
+  userId: string;
+  role: string;
+  status: string;
+  email: string;
+  name: string;
+  joinedAt: string;
+}
+
+export interface WorkspaceInvitationItem {
+  id: string;
+  email: string;
+  role: string;
+  status: string;
+  expiresAt: string;
+  createdAt: string;
+}
+
+export async function fetchWorkspaces(): Promise<WorkspaceItem[]> {
+  const res = await fetch("/api/workspaces", { cache: "no-store" });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || "Failed to load workspaces");
+  }
+  const data = await res.json();
+  return data.data;
+}
+
+export async function createWorkspace(payload: { name: string; slug?: string; domain?: string }): Promise<WorkspaceItem> {
+  const res = await fetch("/api/workspaces", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json();
+  if (!res.ok || !data.success) {
+    throw new Error(data.error || "Failed to create workspace");
+  }
+  return data.workspace;
+}
+
+export async function fetchWorkspaceDetails(id: string): Promise<WorkspaceItem> {
+  const res = await fetch(`/api/workspaces/${id}`, { cache: "no-store" });
+  const data = await res.json();
+  if (!res.ok || !data.success) {
+    throw new Error(data.error || "Failed to load workspace details");
+  }
+  return data.workspace;
+}
+
+export async function updateWorkspace(id: string, payload: { name: string }): Promise<WorkspaceItem> {
+  const res = await fetch(`/api/workspaces/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json();
+  if (!res.ok || !data.success) {
+    throw new Error(data.error || "Failed to update workspace");
+  }
+  return data.workspace;
+}
+
+export async function fetchWorkspaceMembers(id: string): Promise<WorkspaceMemberItem[]> {
+  const res = await fetch(`/api/workspaces/${id}/members`, { cache: "no-store" });
+  const data = await res.json();
+  if (!res.ok || !data.success) {
+    throw new Error(data.error || "Failed to load workspace members");
+  }
+  return data.members;
+}
+
+export async function updateMemberRole(workspaceId: string, memberId: string, role: string): Promise<void> {
+  const res = await fetch(`/api/workspaces/${workspaceId}/members/${memberId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ role }),
+  });
+  const data = await res.json();
+  if (!res.ok || !data.success) {
+    throw new Error(data.error || "Failed to update member role");
+  }
+}
+
+export async function removeWorkspaceMember(workspaceId: string, memberId: string): Promise<void> {
+  const res = await fetch(`/api/workspaces/${workspaceId}/members/${memberId}`, {
+    method: "DELETE",
+  });
+  const data = await res.json();
+  if (!res.ok || !data.success) {
+    throw new Error(data.error || "Failed to remove workspace member");
+  }
+}
+
+export async function fetchWorkspaceInvitations(workspaceId: string): Promise<WorkspaceInvitationItem[]> {
+  const res = await fetch(`/api/workspaces/${workspaceId}/invitations`, { cache: "no-store" });
+  const data = await res.json();
+  if (!res.ok || !data.success) {
+    throw new Error(data.error || "Failed to load invitations");
+  }
+  return data.invitations;
+}
+
+export async function createWorkspaceInvitation(
+  workspaceId: string,
+  payload: { email: string; role: string }
+): Promise<{ id: string; email: string; role: string; inviteToken?: string }> {
+  const res = await fetch(`/api/workspaces/${workspaceId}/invitations`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json();
+  if (!res.ok || !data.success) {
+    throw new Error(data.error || "Failed to create invitation");
+  }
+  return data.invitation;
+}
+
+export async function revokeWorkspaceInvitation(workspaceId: string, inviteId: string): Promise<void> {
+  const res = await fetch(`/api/workspaces/${workspaceId}/invitations/${inviteId}`, {
+    method: "DELETE",
+  });
+  const data = await res.json();
+  if (!res.ok || !data.success) {
+    throw new Error(data.error || "Failed to revoke invitation");
+  }
+}
+
+export async function acceptWorkspaceInvitation(token: string): Promise<{ success: boolean; workspace: WorkspaceItem }> {
+  const res = await fetch("/api/workspaces/invitations/accept", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token }),
+  });
+  const data = await res.json();
+  if (!res.ok || !data.success) {
+    throw new Error(data.error || "Failed to accept invitation");
+  }
+  return data;
+}
+
+// ============================================================================
+// Phase 2: Citation Viewer & Source Document Content API Clients
+// ============================================================================
+
+export interface CitationCoordinate {
+  evidenceId: string;
+  claimId: string;
+  claimText: string;
+  claimType: string;
+  verificationStatus: string;
+  riskLevel: string;
+  sourceDocumentId: string;
+  documentTitle: string;
+  documentType: string;
+  versionNumber: number;
+  pageNumber: number;
+  sectionReference: string;
+  evidenceExcerpt: string;
+  stance: string;
+  relevanceScore: number;
+  charStart?: number | null;
+  charEnd?: number | null;
+  boundingBox?: unknown;
+  extractionMethod: string;
+  extractionConfidence: number;
+  sourceValidity: {
+    approvalStatus: string;
+    validFrom: string;
+    validUntil?: string | null;
+    isCurrentlyValid: boolean;
+    supersededAt?: string | null;
+  };
+  extractedPages?: Array<{ pageNumber: number; text: string }>;
+}
+
+export interface SourceDocumentContent {
+  id: string;
+  title: string;
+  documentType: string;
+  approvalStatus: string;
+  createdAt: string;
+  currentVersion?: {
+    id: string;
+    versionNumber: number;
+    approvalStatus: string;
+    validFrom: string;
+    validUntil?: string | null;
+    supersededAt?: string | null;
+    contentHash?: string;
+  } | null;
+  totalPages: number;
+  pages: Array<{
+    pageNumber: number;
+    text: string;
+    sections?: Array<{ heading?: string; text: string }>;
+  }>;
+}
+
+export async function fetchClaimCitations(claimId: string): Promise<CitationCoordinate[]> {
+  const res = await fetch(`/api/claims/${claimId}/citation`, { cache: "no-store" });
+  if (!res.ok) {
+    const json = await res.json().catch(() => ({}));
+    throw new Error(json.error || "Failed to load claim citations");
+  }
+  const json = await res.json();
+  return json.citations;
+}
+
+export async function fetchSourceDocumentContent(sourceId: string): Promise<SourceDocumentContent> {
+  const res = await fetch(`/api/sources/${sourceId}/content`, { cache: "no-store" });
+  if (!res.ok) {
+    const json = await res.json().catch(() => ({}));
+    throw new Error(json.error || "Failed to load document content");
+  }
+  const json = await res.json();
+  return json.document;
+}
+

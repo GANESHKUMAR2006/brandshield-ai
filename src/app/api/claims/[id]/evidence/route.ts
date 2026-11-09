@@ -1,8 +1,8 @@
 /**
  * BrandShield AI — Claim Evidence Intelligence API Route
- * Phase 7: Evidence Intelligence and RAG
+ * Phase 7 & Phase 2: Evidence Intelligence and RAG
  *
- * GET /api/claims/[id]/evidence - Fetches linked evidence with full provenance
+ * GET /api/claims/[id]/evidence - Fetches linked evidence with full citation & provenance metadata
  * POST /api/claims/[id]/evidence - Triggers hybrid retrieval and links discovered evidence
  */
 
@@ -29,11 +29,22 @@ export async function GET(
       relevance_score: number;
       evidence_type: string;
       created_at: string;
+      stance?: string;
+      retrieval_rationale?: string;
+      section_reference?: string;
+      page_number?: number;
+      char_start?: number;
+      char_end?: number;
+      bounding_box?: unknown;
+      extraction_method?: string;
+      extraction_confidence?: number;
+      source_document_id?: string;
       document_title?: string;
       version_number?: number;
       approval_status?: string;
       valid_from?: string;
       valid_until?: string | null;
+      superseded_at?: string | null;
     }>(
       `SELECT 
         ce.id,
@@ -44,11 +55,22 @@ export async function GET(
         ce.relevance_score,
         ce.evidence_type,
         ce.created_at,
+        COALESCE(ce.stance, 'contextual') as stance,
+        ce.retrieval_rationale,
+        ce.section_reference,
+        COALESCE(ce.page_number, 1) as page_number,
+        ce.char_start,
+        ce.char_end,
+        ce.bounding_box,
+        COALESCE(ce.extraction_method, 'digital_text') as extraction_method,
+        COALESCE(ce.extraction_confidence, 1.0) as extraction_confidence,
+        sd.id as source_document_id,
         sd.title as document_title,
         dv.version_number,
         dv.approval_status,
         dv.valid_from,
-        dv.valid_until
+        dv.valid_until,
+        dv.superseded_at
        FROM claim_evidence ce
        JOIN claims c ON ce.claim_id = c.id
        JOIN submissions s ON c.submission_id = s.id
@@ -75,7 +97,7 @@ export async function GET(
   }
 }
 
-// POST /api/claims/[id]/evidence - Discover and link evidence
+// POST /api/claims/[id]/evidence
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -84,34 +106,36 @@ export async function POST(
     const session = await resolveServerSession();
     const { id } = await params;
 
-    let body: { similarityThreshold?: number; limit?: number } = {};
+    let body: {
+      similarityThreshold?: number;
+      limit?: number;
+    } = {};
+
     try {
-      const text = await request.text();
-      if (text && text.trim().length > 0) {
-        body = JSON.parse(text);
-      }
+      body = await request.json();
     } catch {
-      // Default to empty body if body parse fails
+      // Empty body is acceptable; defaults will be applied
     }
 
     const result = await EvidenceIntelligenceService.discoverAndLinkClaimEvidence(
       session,
       id,
-      body
+      {
+        similarityThreshold: body.similarityThreshold,
+        limit: body.limit,
+      }
     );
 
     return NextResponse.json({
       success: true,
-      message: `Retrieved and linked ${result.retrievedCount} evidence item(s).`,
+      message: `Retrieved and linked ${result.retrievedCount} evidence items for claim "${id}".`,
       data: result,
     });
   } catch (err: unknown) {
     if (err instanceof AuthenticationRequiredError) {
       return NextResponse.json({ error: "Authentication required", details: err.message }, { status: 401 });
     }
-    const message = err instanceof Error ? err.message : "Evidence discovery failed";
-    const status = message.includes("not found") ? 404 : 500;
-    return NextResponse.json({ error: message }, { status });
+    const message = err instanceof Error ? err.message : "Evidence linking failed";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
-

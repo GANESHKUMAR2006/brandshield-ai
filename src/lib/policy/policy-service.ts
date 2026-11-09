@@ -1,9 +1,9 @@
 /**
- * BrandShield AI — Phase 9: Policy Management Service
+ * BrandShield AI — Phase 3: Policy Management Service
  *
  * Provides transactional lifecycle management for compliance policies and immutable
  * policy versions, role authorization checks, tamper-evident audit logging,
- * and zero-side-effect policy simulation.
+ * visual policy builder schema validation, rollbacks, and zero-side-effect simulation.
  */
 
 import { query, withTransaction } from "@/lib/db/server-db";
@@ -14,11 +14,14 @@ import {
   PolicySimulationRequest,
   PolicySimulationResult,
   PolicyVersion,
+  RuleSeverity,
 } from "@/types";
 import { ServerSessionIdentity, canManagePolicies, canViewPolicies } from "@/lib/auth/server-session";
 import { AuditService } from "@/lib/audit/audit-service";
 import { PolicyEngine } from "./policy-engine";
+import { RuleEvaluator } from "./rule-evaluator";
 import { DEFAULT_POLICIES } from "./default-policies";
+import { PolicySchemaValidator, PolicyValidationResult } from "./policy-schema-validator";
 
 // In-memory policy store for local development mode when DB connection string is unavailable
 let inMemoryPolicies: Policy[] = JSON.parse(JSON.stringify(DEFAULT_POLICIES));
@@ -28,6 +31,7 @@ export interface CreatePolicyInput {
   code: string;
   description?: string;
   category: PolicyCategory;
+  severity?: RuleSeverity;
   productId?: string | null;
   rules?: PolicyRule[];
   validFrom?: string;
@@ -36,6 +40,17 @@ export interface CreatePolicyInput {
 export interface CreateDraftVersionInput {
   description?: string;
   rules: PolicyRule[];
+  validFrom?: string;
+  validUntil?: string | null;
+}
+
+export interface UpdatePolicyDraftInput {
+  name?: string;
+  description?: string;
+  category?: PolicyCategory;
+  severity?: RuleSeverity;
+  productId?: string | null;
+  rules?: PolicyRule[];
   validFrom?: string;
   validUntil?: string | null;
 }
@@ -49,6 +64,13 @@ export class PolicyService {
   }
 
   /**
+   * Validates policy schema and JSON rules without side effects.
+   */
+  public static validatePolicyRules(input: unknown): PolicyValidationResult {
+    return PolicySchemaValidator.validatePolicy(input);
+  }
+
+  /**
    * Retrieves all policies for the user's workspace.
    */
   public static async getPolicies(
@@ -56,6 +78,7 @@ export class PolicyService {
     filters?: {
       category?: string;
       status?: string;
+      severity?: string;
       productId?: string;
       search?: string;
     }
@@ -76,6 +99,7 @@ export class PolicyService {
           p.code,
           p.description,
           p.category,
+          p.severity,
           p.status,
           p.active_version_id,
           p.created_at,
@@ -99,6 +123,10 @@ export class PolicyService {
         params.push(filters.status);
         sql += ` AND p.status = $${params.length}`;
       }
+      if (filters?.severity) {
+        params.push(filters.severity);
+        sql += ` AND p.severity = $${params.length}`;
+      }
       if (filters?.productId) {
         params.push(filters.productId);
         sql += ` AND p.product_id = $${params.length}`;
@@ -120,6 +148,7 @@ export class PolicyService {
         code: string;
         description: string | null;
         category: PolicyCategory;
+        severity: RuleSeverity | null;
         status: "draft" | "active" | "archived";
         active_version_id: string | null;
         created_at: string;
@@ -139,6 +168,7 @@ export class PolicyService {
         code: row.code,
         description: row.description,
         category: row.category,
+        severity: row.severity || "high",
         status: row.status,
         active_version_id: row.active_version_id,
         active_version_number: row.active_version_number,
@@ -158,6 +188,9 @@ export class PolicyService {
       }
       if (filters?.status) {
         filtered = filtered.filter((p) => p.status === filters.status);
+      }
+      if (filters?.severity) {
+        filtered = filtered.filter((p) => p.severity === filters.severity);
       }
       if (filters?.productId) {
         filtered = filtered.filter((p) => p.product_id === filters.productId);
@@ -198,6 +231,7 @@ export class PolicyService {
         code: string;
         description: string | null;
         category: PolicyCategory;
+        severity: RuleSeverity | null;
         status: "draft" | "active" | "archived";
         active_version_id: string | null;
         created_at: string;
@@ -205,7 +239,7 @@ export class PolicyService {
       }>(
         `SELECT 
           p.id, p.workspace_id, p.product_id, prod.name as product_name, prod.sku as product_sku,
-          p.name, p.code, p.description, p.category, p.status, p.active_version_id,
+          p.name, p.code, p.description, p.category, p.severity, p.status, p.active_version_id,
           p.created_at, p.updated_at
         FROM policies p
         JOIN workspaces w ON p.workspace_id = w.id
@@ -225,7 +259,7 @@ export class PolicyService {
         id: string;
         policy_id: string;
         version_number: number;
-        status: "draft" | "active" | "archived" | "superseded";
+        status: "draft" | "validated" | "active" | "archived" | "superseded";
         description: string | null;
         valid_from: string;
         valid_until: string | null;
@@ -263,6 +297,7 @@ export class PolicyService {
 
       return {
         ...policyRow,
+        severity: policyRow.severity || "high",
         active_version: activeVer,
         active_version_number: activeVer ? activeVer.version_number : null,
         rules_count: activeVer?.rules?.length || 0,
@@ -288,19 +323,51 @@ export class PolicyService {
     input: CreatePolicyInput
   ): Promise<Policy> {
     if (!canManagePolicies(session.role)) {
+      await AuditService.recordEvent({
+        workspaceId: session.workspaceId,
+        actorId: session.userName,
+        actorRole: session.role,
+        entityType: "policy",
+        entityId: "unauthorized",
+        action: "policy_unauthorized_mutation_attempt",
+        beforeState: null,
+        afterState: { attemptedAction: "create_policy", role: session.role },
+      }).catch(() => {});
       throw new Error(`Forbidden: Role "${session.role}" lacks authorization to create policies.`);
     }
 
-    if (!input.name || !input.code || !input.category) {
-      throw new Error("Invalid policy input: name, code, and category are required.");
+    // Schema and security validation
+    const validation = PolicySchemaValidator.validatePolicy({
+      name: input.name,
+      code: input.code,
+      category: input.category,
+      severity: input.severity,
+      rules: input.rules,
+    });
+
+    if (!validation.isValid) {
+      const issuesMsg = validation.issues.map((i) => `${i.path}: ${i.message}`).join("; ");
+      throw new Error(`Policy validation failed: ${issuesMsg}`);
     }
+
+    const calculatedSeverity: RuleSeverity =
+      input.severity ||
+      (input.rules && input.rules.length > 0
+        ? input.rules.some((r) => r.severity === "critical")
+          ? "critical"
+          : input.rules.some((r) => r.severity === "high")
+          ? "high"
+          : input.rules.some((r) => r.severity === "medium")
+          ? "medium"
+          : "low"
+        : "high");
 
     try {
       return await withTransaction(async (client) => {
         // 1. Insert master policy record (draft)
         const polRes = await client.query<{ id: string; created_at: string }>(
-          `INSERT INTO policies (workspace_id, product_id, name, code, description, category, status)
-           VALUES ($1, $2, $3, $4, $5, $6, 'draft')
+          `INSERT INTO policies (workspace_id, product_id, name, code, description, category, severity, status)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, 'draft')
            RETURNING id, created_at`,
           [
             session.workspaceId,
@@ -309,6 +376,7 @@ export class PolicyService {
             input.code,
             input.description || null,
             input.category,
+            calculatedSeverity,
           ]
         );
         const policyId = polRes.rows[0].id;
@@ -343,6 +411,7 @@ export class PolicyService {
               name: input.name,
               code: input.code,
               category: input.category,
+              severity: calculatedSeverity,
               version_number: 1,
               status: "draft",
               rules_count: (input.rules || []).length,
@@ -371,6 +440,7 @@ export class PolicyService {
           code: input.code,
           description: input.description,
           category: input.category,
+          severity: calculatedSeverity,
           status: "draft",
           active_version_id: null,
           active_version_number: null,
@@ -384,8 +454,8 @@ export class PolicyService {
       });
     } catch {
       // Demo fallback: update in-memory
-      const policyId = `pol-${Date.now()}`;
-      const versionId = `ver-${Date.now()}`;
+      const policyId = `pol-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+      const versionId = `ver-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
       const createdAt = new Date().toISOString();
 
       const newVersion: PolicyVersion = {
@@ -408,6 +478,7 @@ export class PolicyService {
         code: input.code,
         description: input.description,
         category: input.category,
+        severity: calculatedSeverity,
         status: "draft",
         active_version_id: null,
         active_version_number: null,
@@ -434,6 +505,7 @@ export class PolicyService {
           name: input.name,
           code: input.code,
           category: input.category,
+          severity: calculatedSeverity,
           version_number: 1,
           status: "draft",
         },
@@ -452,7 +524,29 @@ export class PolicyService {
     input: CreateDraftVersionInput
   ): Promise<PolicyVersion> {
     if (!canManagePolicies(session.role)) {
+      await AuditService.recordEvent({
+        workspaceId: session.workspaceId,
+        actorId: session.userName,
+        actorRole: session.role,
+        entityType: "policy",
+        entityId: policyId,
+        action: "policy_unauthorized_mutation_attempt",
+        beforeState: null,
+        afterState: { attemptedAction: "create_draft_version", role: session.role },
+      }).catch(() => {});
       throw new Error(`Forbidden: Role "${session.role}" lacks authorization to modify policies.`);
+    }
+
+    // Validate rules
+    const validation = PolicySchemaValidator.validatePolicy({
+      name: "Version Validation",
+      code: "POL-VALIDATE",
+      category: "prohibited_claims",
+      rules: input.rules,
+    });
+    if (!validation.isValid) {
+      const issuesMsg = validation.issues.map((i) => `${i.path}: ${i.message}`).join("; ");
+      throw new Error(`Policy draft validation failed: ${issuesMsg}`);
     }
 
     try {
@@ -520,14 +614,16 @@ export class PolicyService {
         throw new Error(`Policy "${policyId}" not found.`);
       }
 
-      const versions = policy.versions && policy.versions.length > 0
-        ? policy.versions
-        : policy.active_version
-        ? [policy.active_version]
-        : [];
-      const nextVerNumber = versions.length > 0 ? Math.max(...versions.map((v) => v.version_number)) + 1 : 1;
+      const versions =
+        policy.versions && policy.versions.length > 0
+          ? policy.versions
+          : policy.active_version
+          ? [policy.active_version]
+          : [];
+      const nextVerNumber =
+        versions.length > 0 ? Math.max(...versions.map((v) => v.version_number)) + 1 : 1;
       const newVersion: PolicyVersion = {
-        id: `ver-${Date.now()}`,
+        id: `ver-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
         policy_id: policy.id,
         version_number: nextVerNumber,
         status: "draft",
@@ -564,7 +660,141 @@ export class PolicyService {
   }
 
   /**
-   * Activates a policy version, making it immutable and replacing previous active version.
+   * Updates a draft policy. If the policy is already active/published,
+   * editing automatically creates a new draft version to preserve immutability!
+   */
+  public static async updateDraftPolicy(
+    session: ServerSessionIdentity,
+    policyId: string,
+    input: UpdatePolicyDraftInput
+  ): Promise<Policy> {
+    if (!canManagePolicies(session.role)) {
+      await AuditService.recordEvent({
+        workspaceId: session.workspaceId,
+        actorId: session.userName,
+        actorRole: session.role,
+        entityType: "policy",
+        entityId: policyId,
+        action: "policy_unauthorized_mutation_attempt",
+        beforeState: null,
+        afterState: { attemptedAction: "update_policy_draft", role: session.role },
+      }).catch(() => {});
+      throw new Error(`Forbidden: Role "${session.role}" lacks authorization to edit policies.`);
+    }
+
+    const policy = await this.getPolicyById(session, policyId);
+
+    // If policy is active, create a new draft version rather than mutating active version
+    if (policy.status === "active") {
+      const newVer = await this.createDraftVersion(session, policyId, {
+        description: input.description || `Draft update of ${policy.name}`,
+        rules: input.rules || policy.active_version?.rules || [],
+        validFrom: input.validFrom,
+        validUntil: input.validUntil,
+      });
+
+      return await this.getPolicyById(session, policyId);
+    }
+
+    // Validate rules if updating draft policy rules
+    if (input.rules) {
+      const validation = PolicySchemaValidator.validatePolicy({
+        name: input.name || policy.name,
+        code: policy.code,
+        category: input.category || policy.category,
+        severity: input.severity || policy.severity,
+        rules: input.rules,
+      });
+      if (!validation.isValid) {
+        const issuesMsg = validation.issues.map((i) => `${i.path}: ${i.message}`).join("; ");
+        throw new Error(`Policy draft validation failed: ${issuesMsg}`);
+      }
+    }
+
+    // Otherwise, policy is in draft status: update in-place
+    try {
+      return await withTransaction(async (client) => {
+        if (input.name || input.description || input.category || input.severity) {
+          await client.query(
+            `UPDATE policies 
+             SET name = COALESCE($1, name),
+                 description = COALESCE($2, description),
+                 category = COALESCE($3, category),
+                 severity = COALESCE($4, severity),
+                 updated_at = now()
+             WHERE id = $5`,
+            [
+              input.name || null,
+              input.description || null,
+              input.category || null,
+              input.severity || null,
+              policyId,
+            ]
+          );
+        }
+
+        if (input.rules) {
+          // Update the draft version's rules
+          await client.query(
+            `UPDATE policy_versions
+             SET rules = $1, description = COALESCE($2, description)
+             WHERE policy_id = $3 AND status = 'draft'`,
+            [JSON.stringify(input.rules), input.description || null, policyId]
+          );
+        }
+
+        await AuditService.recordEvent(
+          {
+            workspaceId: session.workspaceId,
+            actorId: session.userName,
+            actorRole: session.role,
+            entityType: "policy",
+            entityId: policyId,
+            action: "policy_updated",
+            beforeState: null,
+            afterState: { policyId, name: input.name, rules_count: input.rules?.length },
+          },
+          client
+        );
+
+        return await this.getPolicyById(session, policyId);
+      });
+    } catch {
+      // In-memory fallback
+      const found = inMemoryPolicies.find((p) => p.id === policyId || p.code === policyId);
+      if (!found) throw new Error(`Policy "${policyId}" not found.`);
+
+      if (input.name) found.name = input.name;
+      if (input.description) found.description = input.description;
+      if (input.category) found.category = input.category;
+      if (input.severity) found.severity = input.severity;
+      found.updated_at = new Date().toISOString();
+
+      if (input.rules && found.versions) {
+        const draftVer = found.versions.find((v) => v.status === "draft");
+        if (draftVer) {
+          draftVer.rules = input.rules;
+          if (input.description) draftVer.description = input.description;
+        }
+      }
+
+      await AuditService.recordEvent({
+        workspaceId: session.workspaceId,
+        actorId: session.userName,
+        actorRole: session.role,
+        entityType: "policy",
+        entityId: found.id,
+        action: "policy_updated",
+        beforeState: null,
+        afterState: { policyId: found.id, name: found.name, rules_count: input.rules?.length },
+      });
+
+      return found;
+    }
+  }
+
+  /**
+   * Activates / Publishes a policy version, making it immutable and replacing previous active version.
    */
   public static async activatePolicyVersion(
     session: ServerSessionIdentity,
@@ -572,6 +802,16 @@ export class PolicyService {
     versionId: string
   ): Promise<Policy> {
     if (!canManagePolicies(session.role)) {
+      await AuditService.recordEvent({
+        workspaceId: session.workspaceId,
+        actorId: session.userName,
+        actorRole: session.role,
+        entityType: "policy",
+        entityId: policyId,
+        action: "policy_unauthorized_mutation_attempt",
+        beforeState: null,
+        afterState: { attemptedAction: "activate_policy_version", role: session.role },
+      }).catch(() => {});
       throw new Error(`Forbidden: Role "${session.role}" lacks authorization to activate policies.`);
     }
 
@@ -642,7 +882,9 @@ export class PolicyService {
         throw new Error(`Policy "${policyId}" not found.`);
       }
 
-      const targetVersion = (policy.versions || []).find((v) => v.id === versionId || v.version_number === Number(versionId));
+      const targetVersion = (policy.versions || []).find(
+        (v) => v.id === versionId || v.version_number === Number(versionId)
+      );
       if (!targetVersion) {
         throw new Error(`Policy version "${versionId}" not found.`);
       }
@@ -684,6 +926,120 @@ export class PolicyService {
   }
 
   /**
+   * Rolls back a policy to a target historical version.
+   * Preserves immutability: creates a brand-new version containing the historical rules
+   * and activates it.
+   */
+  public static async rollbackPolicyVersion(
+    session: ServerSessionIdentity,
+    policyId: string,
+    targetVersionNumber: number
+  ): Promise<Policy> {
+    if (!canManagePolicies(session.role)) {
+      await AuditService.recordEvent({
+        workspaceId: session.workspaceId,
+        actorId: session.userName,
+        actorRole: session.role,
+        entityType: "policy",
+        entityId: policyId,
+        action: "policy_unauthorized_mutation_attempt",
+        beforeState: null,
+        afterState: { attemptedAction: "rollback_policy_version", role: session.role },
+      }).catch(() => {});
+      throw new Error(`Forbidden: Role "${session.role}" lacks authorization to rollback policies.`);
+    }
+
+    const policy = await this.getPolicyById(session, policyId);
+    const targetVersion = (policy.versions || []).find(
+      (v) => v.version_number === Number(targetVersionNumber)
+    );
+
+    if (!targetVersion) {
+      throw new Error(
+        `Version ${targetVersionNumber} not found for policy "${policyId}". Cannot rollback.`
+      );
+    }
+
+    // Create a new draft version with targetVersion's rules
+    const newVersion = await this.createDraftVersion(session, policyId, {
+      description: `Rollback to Version ${targetVersionNumber}: ${targetVersion.description || ""}`,
+      rules: targetVersion.rules,
+      validFrom: new Date().toISOString(),
+    });
+
+    // Activate the new version
+    const updatedPolicy = await this.activatePolicyVersion(session, policyId, newVersion.id);
+
+    // Record explicit rollback audit event
+    await AuditService.recordEvent({
+      workspaceId: session.workspaceId,
+      actorId: session.userName,
+      actorRole: session.role,
+      entityType: "policy",
+      entityId: policyId,
+      action: "policy_rollback",
+      beforeState: { active_version_number: policy.active_version_number },
+      afterState: {
+        rolled_back_to_source_version: targetVersionNumber,
+        new_active_version_number: newVersion.version_number,
+        new_active_version_id: newVersion.id,
+      },
+    });
+
+    return updatedPolicy;
+  }
+
+  /**
+   * Duplicates an existing policy and its active rules into a new draft policy.
+   */
+  public static async duplicatePolicy(
+    session: ServerSessionIdentity,
+    sourcePolicyId: string,
+    newCode: string,
+    newName: string
+  ): Promise<Policy> {
+    if (!canManagePolicies(session.role)) {
+      await AuditService.recordEvent({
+        workspaceId: session.workspaceId,
+        actorId: session.userName,
+        actorRole: session.role,
+        entityType: "policy",
+        entityId: sourcePolicyId,
+        action: "policy_unauthorized_mutation_attempt",
+        beforeState: null,
+        afterState: { attemptedAction: "duplicate_policy", role: session.role },
+      }).catch(() => {});
+      throw new Error(`Forbidden: Role "${session.role}" lacks authorization to duplicate policies.`);
+    }
+
+    const sourcePolicy = await this.getPolicyById(session, sourcePolicyId);
+    const rulesToCopy = sourcePolicy.active_version?.rules || sourcePolicy.versions?.[0]?.rules || [];
+
+    const newPolicy = await this.createPolicy(session, {
+      name: newName,
+      code: newCode,
+      description: `Duplicated from ${sourcePolicy.name} (${sourcePolicy.code})`,
+      category: sourcePolicy.category,
+      severity: sourcePolicy.severity,
+      productId: sourcePolicy.product_id,
+      rules: JSON.parse(JSON.stringify(rulesToCopy)),
+    });
+
+    await AuditService.recordEvent({
+      workspaceId: session.workspaceId,
+      actorId: session.userName,
+      actorRole: session.role,
+      entityType: "policy",
+      entityId: newPolicy.id,
+      action: "policy_duplicated",
+      beforeState: { source_policy_id: sourcePolicyId, source_code: sourcePolicy.code },
+      afterState: { new_policy_id: newPolicy.id, new_code: newCode, new_name: newName },
+    });
+
+    return newPolicy;
+  }
+
+  /**
    * Archives a policy and all its versions.
    */
   public static async archivePolicy(
@@ -691,6 +1047,16 @@ export class PolicyService {
     policyId: string
   ): Promise<Policy> {
     if (!canManagePolicies(session.role)) {
+      await AuditService.recordEvent({
+        workspaceId: session.workspaceId,
+        actorId: session.userName,
+        actorRole: session.role,
+        entityType: "policy",
+        entityId: policyId,
+        action: "policy_unauthorized_mutation_attempt",
+        beforeState: null,
+        afterState: { attemptedAction: "archive_policy", role: session.role },
+      }).catch(() => {});
       throw new Error(`Forbidden: Role "${session.role}" lacks authorization to archive policies.`);
     }
 
@@ -781,6 +1147,7 @@ export class PolicyService {
           name: "Simulation Draft Policy",
           code: "SIM-POL-001",
           category: request.draftRules[0]?.category || "prohibited_claims",
+          severity: request.draftRules[0]?.severity || "high",
           status: "active",
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
@@ -826,12 +1193,38 @@ export class PolicyService {
       else if (evalRes.complianceStatus === "review_required") reviewRequiredCount++;
       else if (evalRes.complianceStatus === "non_compliant") nonCompliantCount++;
 
+      // Aggregate failed conditions across all evaluated rules
+      const failedConditions: string[] = [];
+      for (const pol of testPolicies) {
+        const ver = PolicyEngine.resolveEffectiveVersion(pol);
+        if (ver?.rules) {
+          for (const rule of ver.rules) {
+            const ruleRes = RuleEvaluator.evaluateRule(
+              rule,
+              {
+                claimText: claim.claim_text,
+                claimType: claim.claim_type || "other",
+                productId: claim.product_id || request.productId,
+                channel: claim.channel || request.channel,
+                evidenceTypes: claim.evidence_types || [],
+                submissionContent: claim.submission_content,
+              },
+              { policyId: pol.id, policyCode: pol.code, versionNumber: ver.version_number }
+            );
+            if (!ruleRes.isTriggered && ruleRes.failedConditions.length > 0) {
+              failedConditions.push(...ruleRes.failedConditions);
+            }
+          }
+        }
+      }
+
       return {
         claimText: claim.claim_text,
         claimType: claim.claim_type || "other",
         complianceStatus: evalRes.complianceStatus,
         maxSeverity: evalRes.maxSeverity,
         triggeredRules: evalRes.triggeredRules,
+        failedConditions: Array.from(new Set(failedConditions)),
         requiredEvidenceTypes: evalRes.requiredEvidenceTypes,
         mandatoryReviewerRoles: evalRes.mandatoryReviewerRoles,
         summary: evalRes.summary,

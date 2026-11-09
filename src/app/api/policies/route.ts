@@ -14,12 +14,14 @@ export async function GET(request: NextRequest) {
 
     const category = searchParams.get("category") || undefined;
     const status = searchParams.get("status") || undefined;
+    const severity = searchParams.get("severity") || undefined;
     const productId = searchParams.get("productId") || undefined;
     const search = searchParams.get("search") || undefined;
 
     const policies = await PolicyService.getPolicies(session, {
       category,
       status,
+      severity,
       productId,
       search,
     });
@@ -52,6 +54,7 @@ export async function POST(request: NextRequest) {
       code: body.code,
       description: body.description,
       category: body.category,
+      severity: body.severity,
       productId: body.productId,
       rules: body.rules,
       validFrom: body.validFrom,

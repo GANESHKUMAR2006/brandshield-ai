@@ -1,8 +1,8 @@
 /**
  * BrandShield AI — Dedicated Pending Migration Runner
  *
- * Exclusively executes unapplied schema migrations (Phases 7, 8, 9).
- * Preserves all existing data, never reseeds, and tracks history in public._schema_migrations.
+ * Executes unapplied schema migrations tracked in public._schema_migrations.
+ * Preserves all existing data, never reseeds, and tracks history safely.
  *
  * Usage:
  *   node scripts/apply-pending-migrations.js [--dry-run]
@@ -93,18 +93,10 @@ async function run() {
     console.log('\nPending migrations to execute:');
     pendingFiles.forEach((f, idx) => console.log(`  ${idx + 1}. ${f}`));
 
-    // Safety verify: pending files MUST be exactly phases 7, 8, 9
-    const expectedPending = [
-      '20261105050000_phase7_evidence_intelligence.sql',
-      '20261105060000_phase8_admin_analytics.sql',
-      '20261105070000_phase9_policy_intelligence.sql'
-    ];
-
-    const isMatch = pendingFiles.length === expectedPending.length &&
-      pendingFiles.every((f, i) => f === expectedPending[i]);
-
-    if (!isMatch) {
-      throw new Error(`Safety violation: Pending migrations do not match expected Phases 7, 8, 9.\nFound: ${JSON.stringify(pendingFiles)}\nExpected: ${JSON.stringify(expectedPending)}`);
+    // Safety verify: all pending files must be valid SQL files
+    const allValidSql = pendingFiles.every(f => f.endsWith('.sql'));
+    if (!allValidSql) {
+      throw new Error(`Safety violation: Invalid non-SQL files found in pending migrations: ${JSON.stringify(pendingFiles)}`);
     }
 
     if (isDryRun) {
@@ -153,4 +145,3 @@ async function run() {
 }
 
 run();
-

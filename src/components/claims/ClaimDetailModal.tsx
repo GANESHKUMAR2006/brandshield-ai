@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/Badge";
 import { formatPercent, formatDateTime } from "@/lib/utils/formatters";
 import { EscalationCategory } from "@/types";
 import { ClaimLifecycleStepper } from "@/components/claims/ClaimLifecycleStepper";
+import { CitationViewerModal } from "@/components/claims/CitationViewerModal";
 import {
   X,
   Sparkles,
@@ -18,6 +19,7 @@ import {
   ArrowRight,
   ShieldCheck,
   Building2,
+  FileText,
 } from "lucide-react";
 
 interface ClaimDetailModalProps {
@@ -68,6 +70,11 @@ function ClaimDetailModalInner({
   const [overrideReason, setOverrideReason] = useState("");
   const [escalationCategory, setEscalationCategory] = useState<EscalationCategory>("regulatory");
   const [modifiedText, setModifiedText] = useState(claim.suggested_correction || claim.claim_text);
+  const [activeCitationModal, setActiveCitationModal] = useState<{
+    claimId: string;
+    claimText: string;
+    evidenceId?: string;
+  } | null>(null);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -616,19 +623,31 @@ function ClaimDetailModalInner({
                         &ldquo;{ev.evidence_excerpt}&rdquo;
                       </blockquote>
 
-                      {/* Footer: Provenance & Retrieval Rationale */}
-                      <div className="flex items-center justify-between text-[11px] text-slate-400 flex-wrap gap-1">
+                      {/* Footer: Provenance, Action & Retrieval Rationale */}
+                      <div className="flex items-center justify-between text-[11px] text-slate-400 flex-wrap gap-2 pt-2 border-t border-slate-800/80">
                         <div className="flex items-center gap-2">
                           {ev.page_number && (
-                            <span>Page: <strong className="text-slate-200">{ev.page_number}</strong></span>
+                            <span className="text-violet-300 font-mono font-semibold">Page {ev.page_number}</span>
                           )}
                           {ev.section_reference && (
                             <span>Section: <strong className="text-slate-200">{ev.section_reference}</strong></span>
                           )}
                         </div>
-                        <div className="italic text-slate-500 text-[10px]">
-                          {ev.retrieval_rationale || "Retrieved via pgvector hybrid semantic and lexical similarity"}
-                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setActiveCitationModal({
+                              claimId: claim.id,
+                              claimText: claim.claim_text,
+                              evidenceId: ev.id,
+                            })
+                          }
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-violet-950/80 hover:bg-violet-900 border border-violet-800/60 text-violet-300 font-semibold text-[11px] transition-colors cursor-pointer"
+                        >
+                          <FileText className="w-3 h-3" />
+                          <span>View in Citation Viewer</span>
+                        </button>
                       </div>
                     </div>
                   );
@@ -677,6 +696,16 @@ function ClaimDetailModalInner({
             Close
           </Button>
         </div>
+        {/* Citation Viewer Modal */}
+        {activeCitationModal && (
+          <CitationViewerModal
+            isOpen={true}
+            claimId={activeCitationModal.claimId}
+            claimText={activeCitationModal.claimText}
+            initialEvidenceId={activeCitationModal.evidenceId}
+            onClose={() => setActiveCitationModal(null)}
+          />
+        )}
       </div>
     </div>
   );

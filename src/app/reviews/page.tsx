@@ -14,6 +14,7 @@ import {
 } from "@/lib/api-client";
 import { EscalationCategory } from "@/types";
 import { ClaimLifecycleStepper } from "@/components/claims/ClaimLifecycleStepper";
+import { CitationViewerModal } from "@/components/claims/CitationViewerModal";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -23,6 +24,7 @@ import {
   UserCheck,
   ArrowRight,
   Search,
+  FileText,
 } from "lucide-react";
 
 const riskBadgeMap: Record<string, "danger" | "warning" | "default" | "success"> = {
@@ -48,6 +50,13 @@ export default function ReviewsPage() {
   const [activeActionModal, setActiveActionModal] = useState<{
     claim: LiveClaimRecord;
     action: "approve" | "override" | "modify" | "escalate" | "reject";
+  } | null>(null);
+
+  // Citation Viewer Modal State
+  const [activeCitationModal, setActiveCitationModal] = useState<{
+    claimId: string;
+    claimText: string;
+    evidenceId?: string;
   } | null>(null);
 
   const [overrideReason, setOverrideReason] = useState("");
@@ -376,15 +385,39 @@ export default function ReviewsPage() {
                     </div>
                   </div>
 
-                  {/* Attached Clinical Evidence if available */}
+                  {/* Attached Clinical Evidence with Interactive Citation Viewer */}
                   {claim.evidence && claim.evidence.length > 0 && (
-                    <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800 text-xs">
-                      <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
-                        Ground-Truth Evidence Citation:
+                    <div className="p-3.5 rounded-xl bg-slate-950/60 border border-slate-800 text-xs space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                          <FileText className="w-3.5 h-3.5 text-violet-400" />
+                          <span>Ground-Truth Evidence Citation</span>
+                          {claim.evidence[0].page_number && (
+                            <span className="font-mono text-cyan-300 ml-1">
+                              (Page {claim.evidence[0].page_number})
+                            </span>
+                          )}
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setActiveCitationModal({
+                              claimId: claim.id,
+                              claimText: claim.claim_text,
+                              evidenceId: claim.evidence?.[0]?.id,
+                            })
+                          }
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-violet-950/80 hover:bg-violet-900 border border-violet-800/60 text-violet-300 font-semibold text-[11px] transition-colors cursor-pointer shadow-sm"
+                        >
+                          <FileText className="w-3 h-3" />
+                          <span>Inspect Document Citation</span>
+                        </button>
                       </div>
-                      <div className="text-slate-300 italic">
-                        {claim.evidence[0].evidence_excerpt}
-                      </div>
+
+                      <blockquote className="text-slate-300 italic font-serif leading-relaxed pl-2 border-l-2 border-violet-700/60">
+                        &ldquo;{claim.evidence[0].evidence_excerpt}&rdquo;
+                      </blockquote>
                     </div>
                   )}
 
@@ -570,6 +603,16 @@ export default function ReviewsPage() {
             </div>
           </div>
         </div>
+      )}
+      {/* Citation Viewer Modal */}
+      {activeCitationModal && (
+        <CitationViewerModal
+          isOpen={true}
+          claimId={activeCitationModal.claimId}
+          claimText={activeCitationModal.claimText}
+          initialEvidenceId={activeCitationModal.evidenceId}
+          onClose={() => setActiveCitationModal(null)}
+        />
       )}
     </AppLayout>
   );

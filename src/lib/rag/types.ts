@@ -1,10 +1,22 @@
 /**
- * BrandShield AI — Phase 7: Evidence Intelligence and RAG Types
+ * BrandShield AI — Phase 7 & Phase 2: Evidence Intelligence and RAG Types
  */
 
 export type SupportedDocumentFormat = "pdf" | "docx" | "txt" | "md" | "markdown";
 
 export type EvidenceStance = "supporting" | "contradicting" | "inconclusive" | "contextual";
+
+export type ExtractionMethod = "digital_text" | "ocr" | "hybrid_table" | "structured_fact";
+
+export type OcrConfidenceType = "provider_derived" | "estimated" | "unavailable";
+
+export interface StructuredTableData {
+  headers: string[];
+  rows: string[][];
+  rowCount: number;
+  colCount: number;
+  caption?: string;
+}
 
 export interface DocumentSection {
   heading?: string;
@@ -12,6 +24,10 @@ export interface DocumentSection {
   text: string;
   charStart: number;
   charEnd: number;
+  extractionMethod?: ExtractionMethod;
+  extractionConfidence?: number | null;
+  ocrConfidenceType?: OcrConfidenceType;
+  tableData?: StructuredTableData;
 }
 
 export interface ParsedDocument {
@@ -23,6 +39,10 @@ export interface ParsedDocument {
   sections: DocumentSection[];
   rawText: string;
   metadata: Record<string, unknown>;
+  extractionMethod?: ExtractionMethod;
+  extractionConfidence?: number | null;
+  ocrConfidenceType?: OcrConfidenceType;
+  tables?: StructuredTableData[];
 }
 
 export interface DocumentChunk {
@@ -36,6 +56,11 @@ export interface DocumentChunk {
   sectionHeading?: string;
   tokenCount: number;
   embedding?: number[];
+  extractionMethod?: ExtractionMethod;
+  extractionConfidence?: number | null;
+  ocrConfidenceType?: OcrConfidenceType;
+  tableData?: StructuredTableData;
+  boundingBox?: number[];
   metadata: {
     sourceDocumentId?: string;
     documentVersionId?: string;
@@ -43,6 +68,10 @@ export interface DocumentChunk {
     pageNumber?: number;
     sectionHeading?: string;
     tokenCount?: number;
+    extractionMethod?: ExtractionMethod;
+    extractionConfidence?: number | null;
+    ocrConfidenceType?: OcrConfidenceType;
+    tableData?: StructuredTableData;
     [key: string]: unknown;
   };
 }
@@ -83,6 +112,13 @@ export interface RetrievedEvidenceItem {
   content: string;
   pageNumber?: number;
   sectionHeading?: string;
+  charStart?: number;
+  charEnd?: number;
+  boundingBox?: number[];
+  extractionMethod?: ExtractionMethod;
+  extractionConfidence?: number | null;
+  ocrConfidenceType?: OcrConfidenceType;
+  tableData?: StructuredTableData;
   relevanceScore: number; // 0.0 to 1.0
   vectorSimilarity?: number;
   keywordScore?: number;
@@ -105,4 +141,3 @@ export interface ClaimEvidenceLinkingResult {
   snapshot: Record<string, unknown>;
   evaluatedAt: string;
 }
-

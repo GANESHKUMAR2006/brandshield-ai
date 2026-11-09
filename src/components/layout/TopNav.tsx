@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { SITE_CONFIG, DEMO_WORKSPACE, CURRENT_USER } from "@/config/site";
 import { BrandShieldLogo } from "@/components/ui/Icons";
+import { WorkspaceSwitcher } from "@/components/workspace/WorkspaceSwitcher";
 import {
   Menu,
   Bell,
@@ -145,13 +146,9 @@ export function TopNav({ onOpenMobileMenu }: TopNavProps) {
           </span>
         </div>
 
-        {/* Desktop Breadcrumb / Workspace Badge */}
+        {/* Desktop Breadcrumb / Workspace Switcher */}
         <div className="hidden lg:flex items-center gap-2.5 text-xs">
-          <span className="flex items-center gap-1.5 px-2.5 py-1 bg-slate-900/60 border border-slate-800 rounded-lg text-slate-300 font-medium">
-            <Building2 className="w-3.5 h-3.5 text-violet-400" />
-            <span>Workspace:</span>
-            <strong className="text-white font-semibold">{DEMO_WORKSPACE.name}</strong>
-          </span>
+          <WorkspaceSwitcher currentSlug={userInfo.workspaceSlug} />
           <span className="text-slate-600">/</span>
           <span className="text-slate-400 font-medium flex items-center gap-1.5">
             <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 shadow-[0_0_6px_#22d3ee]" />
