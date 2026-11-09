@@ -6,18 +6,27 @@
  * and an ultra-fast local fallback engine for deterministic offline testing.
  */
 
+import { OcrConfidenceType } from "../types";
+
 export interface OcrWord {
   text: string;
   bbox?: number[]; // [x, y, width, height]
-  confidence?: number;
+  confidence?: number | null;
 }
 
 export interface OcrResult {
   text: string;
-  confidence: number; // 0.000 to 1.000
+  confidence: number | null; // 0.000 to 1.000, or null when provider-derived confidence is unavailable
+  confidenceType: OcrConfidenceType;
   engine: string;
   words?: OcrWord[];
   pageNumber?: number;
+  metadata?: {
+    confidenceAvailable: boolean;
+    isEstimated?: boolean;
+    reason?: string;
+    [key: string]: unknown;
+  };
 }
 
 export interface OcrProvider {
@@ -25,7 +34,7 @@ export interface OcrProvider {
   extractText(
     input: Buffer | string,
     mimeType?: string,
-    options?: { pageNumber?: number; language?: string }
+    options?: { pageNumber?: number; language?: string; allowEstimatedConfidence?: boolean }
   ): Promise<OcrResult>;
 }
 
@@ -39,7 +48,7 @@ export class LocalFallbackOcrProvider implements OcrProvider {
   public async extractText(
     input: Buffer | string,
     _mimeType?: string,
-    options?: { pageNumber?: number; language?: string }
+    options?: { pageNumber?: number; language?: string; allowEstimatedConfidence?: boolean }
   ): Promise<OcrResult> {
     const buffer = Buffer.isBuffer(input) ? input : Buffer.from(input, "utf-8");
 
@@ -51,7 +60,25 @@ export class LocalFallbackOcrProvider implements OcrProvider {
       rawStr.includes("SCANNED_PDF:") ||
       rawStr.includes("[SCANNED_OCR]")
     ) {
+      // Check if an explicit provider-derived confidence token is embedded
+      const confMatch = rawStr.match(/\[OCR_CONFIDENCE:\s*([0-9.]+)\]|CONFIDENCE:\s*([0-9.]+)/i);
+      let confidence: number | null = null;
+      let confidenceType: OcrConfidenceType = "unavailable";
+      let reason = "Local fallback OCR operates without a probabilistic neural character confidence model.";
+
+      if (confMatch) {
+        confidence = parseFloat(confMatch[1] || confMatch[2]);
+        confidenceType = "provider_derived";
+        reason = "Provider-derived confidence extracted from upstream telemetry.";
+      } else if (options?.allowEstimatedConfidence) {
+        confidence = 0.90;
+        confidenceType = "estimated";
+        reason = "Estimated baseline confidence explicitly enabled via allowEstimatedConfidence option.";
+      }
+
       const cleaned = rawStr
+        .replace(/\[OCR_CONFIDENCE:\s*[0-9.]+\]/gi, "")
+        .replace(/CONFIDENCE:\s*[0-9.]+/gi, "")
         .replace(/OCR_FIXTURE:\s*/gi, "")
         .replace(/SCANNED_PAGE:\s*/gi, "")
         .replace(/SCANNED_PDF:\s*/gi, "")
@@ -60,18 +87,29 @@ export class LocalFallbackOcrProvider implements OcrProvider {
 
       return {
         text: cleaned,
-        confidence: 0.94,
+        confidence,
+        confidenceType,
         engine: this.name,
         pageNumber: options?.pageNumber || 1,
+        metadata: {
+          confidenceAvailable: confidence !== null,
+          isEstimated: confidenceType === "estimated",
+          reason,
+        },
       };
     }
 
     // Default: if no extractable OCR text stream exists in local fallback, return empty
     return {
       text: "",
-      confidence: 0.0,
+      confidence: null,
+      confidenceType: "unavailable",
       engine: this.name,
       pageNumber: options?.pageNumber || 1,
+      metadata: {
+        confidenceAvailable: false,
+        reason: "No extractable text found in input buffer.",
+      },
     };
   }
 }
@@ -85,7 +123,7 @@ export class OpenAiVisionOcrProvider implements OcrProvider {
   public async extractText(
     input: Buffer | string,
     mimeType = "image/png",
-    options?: { pageNumber?: number; language?: string }
+    options?: { pageNumber?: number; language?: string; allowEstimatedConfidence?: boolean }
   ): Promise<OcrResult> {
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey || apiKey.startsWith("sk-placeholder")) {
@@ -141,11 +179,24 @@ export class OpenAiVisionOcrProvider implements OcrProvider {
       const json = await response.json();
       const extractedText = json.choices?.[0]?.message?.content?.trim() || "";
 
+      // OpenAI Vision API chat completions endpoint outputs text without token-level OCR confidence percentiles
+      const confidence = options?.allowEstimatedConfidence ? 0.90 : null;
+      const confidenceType: OcrConfidenceType = options?.allowEstimatedConfidence ? "estimated" : "unavailable";
+
       return {
         text: extractedText,
-        confidence: 0.98,
+        confidence,
+        confidenceType,
         engine: this.name,
         pageNumber: options?.pageNumber || 1,
+        metadata: {
+          confidenceAvailable: confidence !== null,
+          isEstimated: confidenceType === "estimated",
+          reason:
+            confidenceType === "estimated"
+              ? "Estimated baseline confidence assigned because OpenAI Vision chat completions endpoint does not output per-word or token-level OCR confidence scores."
+              : "OpenAI Vision chat completions endpoint does not output per-word or token-level OCR confidence scores.",
+        },
       };
     } catch {
       // Fallback on network/API failure

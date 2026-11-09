@@ -8,6 +8,8 @@ export type EvidenceStance = "supporting" | "contradicting" | "inconclusive" | "
 
 export type ExtractionMethod = "digital_text" | "ocr" | "hybrid_table" | "structured_fact";
 
+export type OcrConfidenceType = "provider_derived" | "estimated" | "unavailable";
+
 export interface StructuredTableData {
   headers: string[];
   rows: string[][];
@@ -23,7 +25,8 @@ export interface DocumentSection {
   charStart: number;
   charEnd: number;
   extractionMethod?: ExtractionMethod;
-  extractionConfidence?: number;
+  extractionConfidence?: number | null;
+  ocrConfidenceType?: OcrConfidenceType;
   tableData?: StructuredTableData;
 }
 
@@ -37,7 +40,8 @@ export interface ParsedDocument {
   rawText: string;
   metadata: Record<string, unknown>;
   extractionMethod?: ExtractionMethod;
-  extractionConfidence?: number;
+  extractionConfidence?: number | null;
+  ocrConfidenceType?: OcrConfidenceType;
   tables?: StructuredTableData[];
 }
 
@@ -53,7 +57,8 @@ export interface DocumentChunk {
   tokenCount: number;
   embedding?: number[];
   extractionMethod?: ExtractionMethod;
-  extractionConfidence?: number;
+  extractionConfidence?: number | null;
+  ocrConfidenceType?: OcrConfidenceType;
   tableData?: StructuredTableData;
   boundingBox?: number[];
   metadata: {
@@ -64,7 +69,8 @@ export interface DocumentChunk {
     sectionHeading?: string;
     tokenCount?: number;
     extractionMethod?: ExtractionMethod;
-    extractionConfidence?: number;
+    extractionConfidence?: number | null;
+    ocrConfidenceType?: OcrConfidenceType;
     tableData?: StructuredTableData;
     [key: string]: unknown;
   };
@@ -110,7 +116,8 @@ export interface RetrievedEvidenceItem {
   charEnd?: number;
   boundingBox?: number[];
   extractionMethod?: ExtractionMethod;
-  extractionConfidence?: number;
+  extractionConfidence?: number | null;
+  ocrConfidenceType?: OcrConfidenceType;
   tableData?: StructuredTableData;
   relevanceScore: number; // 0.0 to 1.0
   vectorSimilarity?: number;

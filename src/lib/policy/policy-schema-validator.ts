@@ -102,6 +102,14 @@ export const MAX_POLICY_JSON_BYTES = 100 * 1024; // 100 KB
 export const MAX_RULES_PER_POLICY = 50;
 export const MAX_CONDITIONS_PER_RULE = 25;
 export const MAX_NESTING_DEPTH = 5;
+export const MAX_REGEX_LENGTH = 150;
+export const MAX_REGEX_GROUP_DEPTH = 3;
+
+export interface RegexSafetyResult {
+  isSafe: boolean;
+  code?: "INVALID_REGEX" | "EXCESSIVE_REGEX_LENGTH" | "UNSAFE_REGEX";
+  reason?: string;
+}
 
 const PROHIBITED_PROPERTY_NAMES = new Set([
   "__proto__",
@@ -479,13 +487,12 @@ export class PolicySchemaValidator {
             message: "Operator 'matches_regex' requires a non-empty regular expression string.",
           });
         } else {
-          try {
-            new RegExp(value);
-          } catch (e) {
+          const safety = PolicySchemaValidator.isSafeRegex(value);
+          if (!safety.isSafe) {
             issues.push({
               path: `${path}.value`,
-              code: "INVALID_REGEX",
-              message: `Invalid regular expression '${value}': ${(e as Error).message}.`,
+              code: safety.code || "UNSAFE_REGEX",
+              message: safety.reason || `Unsafe regular expression '${value}'.`,
             });
           }
         }
@@ -509,5 +516,130 @@ export class PolicySchemaValidator {
         }
       }
     }
+  }
+
+  /**
+   * Statically screens regular expressions for syntax validity, length bounds,
+   * nesting depth, and catastrophic backtracking patterns (ReDoS prevention).
+   */
+  public static isSafeRegex(pattern: string): RegexSafetyResult {
+    if (typeof pattern !== "string" || !pattern.trim()) {
+      return {
+        isSafe: false,
+        code: "INVALID_REGEX",
+        reason: "Regex pattern cannot be empty.",
+      };
+    }
+
+    // 1. Length bound check
+    if (pattern.length > MAX_REGEX_LENGTH) {
+      return {
+        isSafe: false,
+        code: "EXCESSIVE_REGEX_LENGTH",
+        reason: `Regex pattern length (${pattern.length}) exceeds maximum allowed limit of ${MAX_REGEX_LENGTH} characters.`,
+      };
+    }
+
+    // 2. Consecutive or redundant quantifiers check (e.g. ++, **, +*, *+)
+    if (/[+*]{2,}|(?:\+\?|\*\?|\?\?){2,}/.test(pattern)) {
+      return {
+        isSafe: false,
+        code: "UNSAFE_REGEX",
+        reason: "Consecutive quantifiers detected, which induce non-linear catastrophic backtracking.",
+      };
+    }
+
+    // 3. Syntax validity check
+    try {
+      new RegExp(pattern);
+    } catch (e) {
+      return {
+        isSafe: false,
+        code: "INVALID_REGEX",
+        reason: `Malformed regular expression syntax: ${(e as Error).message}`,
+      };
+    }
+
+    // 4. Group nesting depth check (max depth 3)
+    let currentDepth = 0;
+    let maxDepth = 0;
+    let escaped = false;
+    let inCharClass = false;
+
+    for (let i = 0; i < pattern.length; i++) {
+      const ch = pattern[i];
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (ch === "\\") {
+        escaped = true;
+        continue;
+      }
+      if (ch === "[" && !inCharClass) {
+        inCharClass = true;
+        continue;
+      }
+      if (ch === "]" && inCharClass) {
+        inCharClass = false;
+        continue;
+      }
+      if (!inCharClass) {
+        if (ch === "(") {
+          currentDepth++;
+          if (currentDepth > maxDepth) maxDepth = currentDepth;
+        } else if (ch === ")") {
+          if (currentDepth > 0) currentDepth--;
+        }
+      }
+    }
+
+    if (maxDepth > MAX_REGEX_GROUP_DEPTH) {
+      return {
+        isSafe: false,
+        code: "UNSAFE_REGEX",
+        reason: `Regex nesting depth (${maxDepth}) exceeds maximum allowed depth of ${MAX_REGEX_GROUP_DEPTH}.`,
+      };
+    }
+
+    // 5. Nested quantifiers detection (e.g. (a+)+, (a*)*, ([0-9]+)+, (\w+)+, (.*)+, ((a+)+)+)
+    // Matches a group containing an internal quantifier (+, *, or range quantifier) followed by an outer quantifier
+    const nestedQuantifierRegex = /\((?:\?:)?(?:[^()\\]|\\.)*(?:[*+]|\{\d+,?\d*\})\s*\)(?:[*+]|\{\d+,?\d*\})/;
+    if (nestedQuantifierRegex.test(pattern)) {
+      return {
+        isSafe: false,
+        code: "UNSAFE_REGEX",
+        reason: "Catastrophic backtracking vulnerability detected: nested quantifiers on repeating group.",
+      };
+    }
+
+    // 6. Quantified alternation with inner quantifiers or overlapping alternatives:
+    // e.g. (a|b+)+, (a+|b)+, (a|a)+
+    const quantifiedAlternation = /\((?:\?:)?((?:[^()\\]|\\.)*\|(?:[^()\\]|\\.)*)\)(?:[*+]|\{\d+,?\d*\})/;
+    const altMatch = pattern.match(quantifiedAlternation);
+    if (altMatch && altMatch[1]) {
+      const branches = altMatch[1].split("|").map((b) => b.trim());
+      const hasInnerQuantifier = branches.some((b) => /(?:[*+]|\{\d+,?\d*\})/.test(b));
+      const hasDuplicateBranches = new Set(branches).size < branches.length;
+      if (hasInnerQuantifier || hasDuplicateBranches) {
+        return {
+          isSafe: false,
+          code: "UNSAFE_REGEX",
+          reason: "Catastrophic backtracking vulnerability detected: quantified alternation with nested quantifiers or duplicate alternatives.",
+        };
+      }
+    }
+
+    // 7. Repeated group with wildcard quantifier: e.g. (.*a)+ or (.+a)+
+    const repeatedDotRegex = /\((?:\?:)?(?:[^()\\]|\\.)*\.[*+](?:[^()\\]|\\.)*\)(?:[*+]|\{\d+,?\d*\})/;
+    if (repeatedDotRegex.test(pattern)) {
+      return {
+        isSafe: false,
+        code: "UNSAFE_REGEX",
+        reason: "Catastrophic backtracking vulnerability detected: repeated group containing unconstrained wildcard quantifier.",
+      };
+    }
+
+    return { isSafe: true };
   }
 }

@@ -11,6 +11,7 @@ import {
   PolicyConditionGroup,
   RuleConditionOperator,
 } from "@/types";
+import { PolicySchemaValidator } from "./policy-schema-validator";
 
 export interface ConditionEvaluationContext {
   claimText: string;
@@ -446,12 +447,28 @@ export class ConditionEvaluator {
 
       // 14. MATCHES_REGEX
       case "matches_regex": {
+        const regexStr = String(value || "");
+        const safety = PolicySchemaValidator.isSafeRegex(regexStr);
+        if (!safety.isSafe) {
+          return {
+            condition,
+            isMatched: false,
+            fieldName: field,
+            operator,
+            expectedValue: regexStr,
+            actualValue: null,
+            failedDetail: `Regex safety screening rejected pattern /${regexStr}/: ${safety.reason || "Unsafe pattern"}`,
+          };
+        }
+
         try {
-          const pattern = new RegExp(String(value), "i");
-          const targetText =
+          const pattern = new RegExp(regexStr, "i");
+          const targetRaw =
             field === "claim_text"
               ? context.claimText
               : context.submissionContent || context.claimText || "";
+          // Bound input length to 10,000 characters to prevent excessive processing
+          const targetText = String(targetRaw || "").slice(0, 10000);
           const match = targetText.match(pattern);
           if (match) {
             return {
@@ -459,21 +476,21 @@ export class ConditionEvaluator {
               isMatched: true,
               fieldName: field,
               operator,
-              expectedValue: String(value),
+              expectedValue: regexStr,
               actualValue: match[0],
-              matchedDetail: `Pattern /${value}/ matched "${match[0]}"`,
+              matchedDetail: `Pattern /${regexStr}/ matched "${match[0]}"`,
             };
           }
         } catch (err) {
-          console.warn("Invalid regex pattern in policy condition:", value, err);
+          console.warn("Invalid regex pattern in policy condition:", regexStr, err);
         }
         return {
           condition,
           isMatched: false,
           fieldName: field,
           operator,
-          expectedValue: String(value),
-          failedDetail: `Pattern /${value}/ did not match text`,
+          expectedValue: regexStr,
+          failedDetail: `Pattern /${regexStr}/ did not match text`,
         };
       }
 

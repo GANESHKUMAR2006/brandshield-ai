@@ -696,6 +696,21 @@ export class PolicyService {
       return await this.getPolicyById(session, policyId);
     }
 
+    // Validate rules if updating draft policy rules
+    if (input.rules) {
+      const validation = PolicySchemaValidator.validatePolicy({
+        name: input.name || policy.name,
+        code: policy.code,
+        category: input.category || policy.category,
+        severity: input.severity || policy.severity,
+        rules: input.rules,
+      });
+      if (!validation.isValid) {
+        const issuesMsg = validation.issues.map((i) => `${i.path}: ${i.message}`).join("; ");
+        throw new Error(`Policy draft validation failed: ${issuesMsg}`);
+      }
+    }
+
     // Otherwise, policy is in draft status: update in-place
     try {
       return await withTransaction(async (client) => {

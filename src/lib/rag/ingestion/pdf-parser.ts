@@ -174,7 +174,8 @@ export class PdfDocumentParser implements DocumentParser {
         charStart: 0,
         charEnd: cleanOcrText.length,
         extractionMethod: tables.length > 0 ? "hybrid_table" : "ocr",
-        extractionConfidence: ocrResult.confidence || 0.94,
+        extractionConfidence: ocrResult.confidence,
+        ocrConfidenceType: ocrResult.confidenceType,
         tableData: tables[0],
       };
 
@@ -187,13 +188,17 @@ export class PdfDocumentParser implements DocumentParser {
         sections: [section],
         rawText: cleanOcrText,
         extractionMethod: "ocr",
-        extractionConfidence: ocrResult.confidence || 0.94,
+        extractionConfidence: ocrResult.confidence,
+        ocrConfidenceType: ocrResult.confidenceType,
         tables,
         metadata: {
           ...metadata,
           pageCount: Math.max(1, totalPages),
           isScanned: true,
           ocrEngine: ocrResult.engine,
+          ocrConfidenceType: ocrResult.confidenceType,
+          ocrConfidenceAvailable: ocrResult.confidence !== null,
+          ocrMetadata: ocrResult.metadata,
           parsedAt: new Date().toISOString(),
         },
       };
@@ -216,7 +221,8 @@ export class PdfDocumentParser implements DocumentParser {
       const page = pages[i];
       let cleanPageText = (page.text || "").trim();
       let method: ExtractionMethod = "digital_text";
-      let confidence = 1.0;
+      let confidence: number | null = 1.0;
+      let ocrConfidenceType: any = undefined;
 
       // Mixed page: If this page has no selectable text, attempt OCR
       if (cleanPageText.length === 0) {
@@ -226,7 +232,8 @@ export class PdfDocumentParser implements DocumentParser {
         if (pageOcr.text && pageOcr.text.trim().length > 0) {
           cleanPageText = pageOcr.text.trim();
           method = "ocr";
-          confidence = pageOcr.confidence || 0.92;
+          confidence = pageOcr.confidence;
+          ocrConfidenceType = pageOcr.confidenceType;
           hasOcrSection = true;
         }
       }
@@ -254,6 +261,7 @@ export class PdfDocumentParser implements DocumentParser {
         charEnd: charOffset + cleanPageText.length,
         extractionMethod: method,
         extractionConfidence: confidence,
+        ocrConfidenceType,
         tableData: pageTables[0],
       });
 
@@ -287,7 +295,9 @@ export class PdfDocumentParser implements DocumentParser {
       ],
       rawText: fullRawText,
       extractionMethod: primaryMethod,
-      extractionConfidence: hasOcrSection ? 0.94 : 1.0,
+      extractionConfidence: hasOcrSection
+        ? sections.find((s) => s.extractionMethod === "ocr")?.extractionConfidence ?? null
+        : 1.0,
       tables: allDiscoveredTables,
       metadata: {
         ...metadata,
@@ -362,8 +372,11 @@ export class PdfDocumentParser implements DocumentParser {
       throw new DocumentEmptyError("PDF fixture contains no text.");
     }
 
+    const confMatch = str.match(/\[OCR_CONFIDENCE:\s*([0-9.]+)\]|CONFIDENCE:\s*([0-9.]+)/i);
     const tables = TableExtractor.extractTables(clean);
     const isScanned = str.includes("SCANNED_PDF:") || str.includes("[SCANNED_OCR]");
+    const fixtureConf = confMatch ? parseFloat(confMatch[1] || confMatch[2]) : (isScanned ? 0.94 : 1.0);
+    const confType = confMatch ? "provider_derived" : (isScanned ? "estimated" : undefined);
 
     return {
       title: metadata?.title || metadata?.filename || "PDF Fixture Document",
@@ -379,15 +392,17 @@ export class PdfDocumentParser implements DocumentParser {
           charStart: 0,
           charEnd: clean.length,
           extractionMethod: isScanned ? "ocr" : tables.length > 0 ? "hybrid_table" : "digital_text",
-          extractionConfidence: isScanned ? 0.94 : 1.0,
+          extractionConfidence: fixtureConf,
+          ocrConfidenceType: confType as any,
           tableData: tables[0],
         },
       ],
       rawText: clean,
       extractionMethod: isScanned ? "ocr" : tables.length > 0 ? "hybrid_table" : "digital_text",
-      extractionConfidence: isScanned ? 0.94 : 1.0,
+      extractionConfidence: fixtureConf,
+      ocrConfidenceType: confType as any,
       tables,
-      metadata: { ...metadata, parsedAt: new Date().toISOString() },
+      metadata: { ...metadata, ocrConfidenceType: confType, parsedAt: new Date().toISOString() },
     };
   }
 }
