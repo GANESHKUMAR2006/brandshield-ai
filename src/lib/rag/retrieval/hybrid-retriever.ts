@@ -1,6 +1,6 @@
 /**
  * BrandShield AI — Hybrid Evidence Retriever
- * Phase 7: Evidence Intelligence and RAG
+ * Phase 7 & Phase 2: Evidence Intelligence and RAG
  *
  * Combines pgvector semantic similarity with keyword lexical search,
  * enforcing strict workspace boundaries, document validity dates, and
@@ -12,6 +12,8 @@ import {
   EvidenceRetrievalQuery,
   RetrievedEvidenceItem,
   DocumentChunk,
+  ExtractionMethod,
+  StructuredTableData,
 } from "../types";
 import { getConfiguredEmbeddingProvider } from "../embeddings/embedding-provider";
 import { RetrievalScorer } from "./retrieval-scorer";
@@ -92,9 +94,14 @@ export class HybridEvidenceRetriever {
           continue;
         }
 
-        const pageNum = typeof row.metadata?.pageNumber === "number" ? row.metadata.pageNumber : undefined;
+        const pageNum = typeof row.metadata?.pageNumber === "number" ? row.metadata.pageNumber : 1;
         const sectionHead = typeof row.metadata?.sectionHeading === "string" ? row.metadata.sectionHeading : undefined;
         const stance = RetrievalScorer.evaluateStance(options.claimText, row.content);
+        const charStart = typeof row.metadata?.charStart === "number" ? (row.metadata.charStart as number) : undefined;
+        const charEnd = typeof row.metadata?.charEnd === "number" ? (row.metadata.charEnd as number) : undefined;
+        const extractionMethod = (row.metadata?.extractionMethod as ExtractionMethod) || "digital_text";
+        const extractionConfidence = typeof row.metadata?.extractionConfidence === "number" ? (row.metadata.extractionConfidence as number) : 1.0;
+        const tableData = (row.metadata?.tableData as StructuredTableData) || undefined;
 
         items.push({
           id: row.chunk_id,
@@ -108,6 +115,11 @@ export class HybridEvidenceRetriever {
           content: row.content,
           pageNumber: pageNum,
           sectionHeading: sectionHead,
+          charStart,
+          charEnd,
+          extractionMethod,
+          extractionConfidence,
+          tableData,
           relevanceScore: hybridRelevance,
           vectorSimilarity: vectorSim,
           keywordScore: kwScore,
@@ -197,8 +209,13 @@ export class HybridEvidenceRetriever {
           chunkId: chunk.stableId,
           chunkIndex: chunk.chunkIndex,
           content: chunk.content,
-          pageNumber: chunk.pageNumber,
+          pageNumber: chunk.pageNumber ?? 1,
           sectionHeading: chunk.sectionHeading,
+          charStart: chunk.charStart,
+          charEnd: chunk.charEnd,
+          extractionMethod: chunk.extractionMethod || "digital_text",
+          extractionConfidence: chunk.extractionConfidence ?? 1.0,
+          tableData: chunk.tableData,
           relevanceScore: hybridRelevance,
           vectorSimilarity: vectorSim,
           keywordScore: kwScore,
@@ -219,4 +236,3 @@ export class HybridEvidenceRetriever {
     return results.slice(0, limit);
   }
 }
-

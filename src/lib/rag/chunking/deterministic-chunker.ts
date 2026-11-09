@@ -1,9 +1,10 @@
 /**
  * BrandShield AI — Deterministic Document Chunker
- * Phase 7: Evidence Intelligence and RAG
+ * Phase 7 & Phase 2: Evidence Intelligence and RAG
  *
  * Slices parsed documents into section-aware, overlapping chunks with stable IDs,
- * page/heading provenance, and sentence-boundary protection.
+ * page/heading provenance, table structures, and sentence-boundary protection.
+ * Invariant: Every chunk preserves an explicit pageNumber and character offset.
  */
 
 import crypto from "crypto";
@@ -29,8 +30,8 @@ export class DeterministicChunker {
   }
 
   /**
-   * Chunks a parsed document into discrete, overlapping chunks preserving section
-   * and page provenance.
+   * Chunks a parsed document into discrete, overlapping chunks preserving section,
+   * page, and table provenance.
    */
   public static chunkDocument(
     document: ParsedDocument,
@@ -51,6 +52,11 @@ export class DeterministicChunker {
       const sectionText = section.text.trim();
       if (!sectionText) continue;
 
+      const pageNum = section.pageNumber ?? 1;
+      const extractionMethod = section.extractionMethod || document.extractionMethod || "digital_text";
+      const extractionConfidence = section.extractionConfidence ?? document.extractionConfidence ?? 1.0;
+      const tableData = section.tableData;
+
       // If the section is small enough, keep it as a single chunk to preserve complete context
       if (sectionText.length <= targetSize + overlap) {
         const stableId = this.generateStableChunkId(versionId, globalChunkIndex, sectionText);
@@ -60,16 +66,22 @@ export class DeterministicChunker {
           content: sectionText,
           charStart: section.charStart,
           charEnd: section.charEnd,
-          pageNumber: section.pageNumber,
+          pageNumber: pageNum,
           sectionHeading: section.heading,
           tokenCount: Math.ceil(sectionText.length / 4),
+          extractionMethod,
+          extractionConfidence,
+          tableData,
           metadata: {
             sourceDocumentId: provenance?.sourceDocumentId,
             documentVersionId: provenance?.documentVersionId,
             format: document.format,
-            pageNumber: section.pageNumber,
+            pageNumber: pageNum,
             sectionHeading: section.heading,
             tokenCount: Math.ceil(sectionText.length / 4),
+            extractionMethod,
+            extractionConfidence,
+            tableData,
           },
         });
         globalChunkIndex++;
@@ -97,16 +109,22 @@ export class DeterministicChunker {
             content: finalChunk,
             charStart: currentChunkStart,
             charEnd: currentChunkStart + finalChunk.length,
-            pageNumber: section.pageNumber,
+            pageNumber: pageNum,
             sectionHeading: section.heading,
             tokenCount: Math.ceil(finalChunk.length / 4),
+            extractionMethod,
+            extractionConfidence,
+            tableData,
             metadata: {
               sourceDocumentId: provenance?.sourceDocumentId,
               documentVersionId: provenance?.documentVersionId,
               format: document.format,
-              pageNumber: section.pageNumber,
+              pageNumber: pageNum,
               sectionHeading: section.heading,
               tokenCount: Math.ceil(finalChunk.length / 4),
+              extractionMethod,
+              extractionConfidence,
+              tableData,
             },
           });
           globalChunkIndex++;
@@ -133,16 +151,22 @@ export class DeterministicChunker {
           content: finalChunk,
           charStart: currentChunkStart,
           charEnd: currentChunkStart + finalChunk.length,
-          pageNumber: section.pageNumber,
+          pageNumber: pageNum,
           sectionHeading: section.heading,
           tokenCount: Math.ceil(finalChunk.length / 4),
+          extractionMethod,
+          extractionConfidence,
+          tableData,
           metadata: {
             sourceDocumentId: provenance?.sourceDocumentId,
             documentVersionId: provenance?.documentVersionId,
             format: document.format,
-            pageNumber: section.pageNumber,
+            pageNumber: pageNum,
             sectionHeading: section.heading,
             tokenCount: Math.ceil(finalChunk.length / 4),
+            extractionMethod,
+            extractionConfidence,
+            tableData,
           },
         });
         globalChunkIndex++;
@@ -152,4 +176,3 @@ export class DeterministicChunker {
     return chunks;
   }
 }
-

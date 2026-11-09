@@ -903,3 +903,82 @@ export async function acceptWorkspaceInvitation(token: string): Promise<{ succes
   }
   return data;
 }
+
+// ============================================================================
+// Phase 2: Citation Viewer & Source Document Content API Clients
+// ============================================================================
+
+export interface CitationCoordinate {
+  evidenceId: string;
+  claimId: string;
+  claimText: string;
+  claimType: string;
+  verificationStatus: string;
+  riskLevel: string;
+  sourceDocumentId: string;
+  documentTitle: string;
+  documentType: string;
+  versionNumber: number;
+  pageNumber: number;
+  sectionReference: string;
+  evidenceExcerpt: string;
+  stance: string;
+  relevanceScore: number;
+  charStart?: number | null;
+  charEnd?: number | null;
+  boundingBox?: unknown;
+  extractionMethod: string;
+  extractionConfidence: number;
+  sourceValidity: {
+    approvalStatus: string;
+    validFrom: string;
+    validUntil?: string | null;
+    isCurrentlyValid: boolean;
+    supersededAt?: string | null;
+  };
+  extractedPages?: Array<{ pageNumber: number; text: string }>;
+}
+
+export interface SourceDocumentContent {
+  id: string;
+  title: string;
+  documentType: string;
+  approvalStatus: string;
+  createdAt: string;
+  currentVersion?: {
+    id: string;
+    versionNumber: number;
+    approvalStatus: string;
+    validFrom: string;
+    validUntil?: string | null;
+    supersededAt?: string | null;
+    contentHash?: string;
+  } | null;
+  totalPages: number;
+  pages: Array<{
+    pageNumber: number;
+    text: string;
+    sections?: Array<{ heading?: string; text: string }>;
+  }>;
+}
+
+export async function fetchClaimCitations(claimId: string): Promise<CitationCoordinate[]> {
+  const res = await fetch(`/api/claims/${claimId}/citation`, { cache: "no-store" });
+  if (!res.ok) {
+    const json = await res.json().catch(() => ({}));
+    throw new Error(json.error || "Failed to load claim citations");
+  }
+  const json = await res.json();
+  return json.citations;
+}
+
+export async function fetchSourceDocumentContent(sourceId: string): Promise<SourceDocumentContent> {
+  const res = await fetch(`/api/sources/${sourceId}/content`, { cache: "no-store" });
+  if (!res.ok) {
+    const json = await res.json().catch(() => ({}));
+    throw new Error(json.error || "Failed to load document content");
+  }
+  const json = await res.json();
+  return json.document;
+}
+
