@@ -744,3 +744,162 @@ export async function fetchSystemHealth(): Promise<SystemHealthData> {
   }
   return await res.json();
 }
+
+
+// ============================================================================
+// Phase 1: Enterprise Multi-Tenancy & Workspace Memberships Client
+// ============================================================================
+
+export interface WorkspaceItem {
+  id: string;
+  name: string;
+  slug: string;
+  role: string;
+  status: string;
+  createdAt: string;
+  memberCount: number;
+  submissionCount?: number;
+}
+
+export interface WorkspaceMemberItem {
+  id: string;
+  userId: string;
+  role: string;
+  status: string;
+  email: string;
+  name: string;
+  joinedAt: string;
+}
+
+export interface WorkspaceInvitationItem {
+  id: string;
+  email: string;
+  role: string;
+  status: string;
+  expiresAt: string;
+  createdAt: string;
+}
+
+export async function fetchWorkspaces(): Promise<WorkspaceItem[]> {
+  const res = await fetch("/api/workspaces", { cache: "no-store" });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || "Failed to load workspaces");
+  }
+  const data = await res.json();
+  return data.data;
+}
+
+export async function createWorkspace(payload: { name: string; slug?: string; domain?: string }): Promise<WorkspaceItem> {
+  const res = await fetch("/api/workspaces", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json();
+  if (!res.ok || !data.success) {
+    throw new Error(data.error || "Failed to create workspace");
+  }
+  return data.workspace;
+}
+
+export async function fetchWorkspaceDetails(id: string): Promise<WorkspaceItem> {
+  const res = await fetch(`/api/workspaces/${id}`, { cache: "no-store" });
+  const data = await res.json();
+  if (!res.ok || !data.success) {
+    throw new Error(data.error || "Failed to load workspace details");
+  }
+  return data.workspace;
+}
+
+export async function updateWorkspace(id: string, payload: { name: string }): Promise<WorkspaceItem> {
+  const res = await fetch(`/api/workspaces/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json();
+  if (!res.ok || !data.success) {
+    throw new Error(data.error || "Failed to update workspace");
+  }
+  return data.workspace;
+}
+
+export async function fetchWorkspaceMembers(id: string): Promise<WorkspaceMemberItem[]> {
+  const res = await fetch(`/api/workspaces/${id}/members`, { cache: "no-store" });
+  const data = await res.json();
+  if (!res.ok || !data.success) {
+    throw new Error(data.error || "Failed to load workspace members");
+  }
+  return data.members;
+}
+
+export async function updateMemberRole(workspaceId: string, memberId: string, role: string): Promise<void> {
+  const res = await fetch(`/api/workspaces/${workspaceId}/members/${memberId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ role }),
+  });
+  const data = await res.json();
+  if (!res.ok || !data.success) {
+    throw new Error(data.error || "Failed to update member role");
+  }
+}
+
+export async function removeWorkspaceMember(workspaceId: string, memberId: string): Promise<void> {
+  const res = await fetch(`/api/workspaces/${workspaceId}/members/${memberId}`, {
+    method: "DELETE",
+  });
+  const data = await res.json();
+  if (!res.ok || !data.success) {
+    throw new Error(data.error || "Failed to remove workspace member");
+  }
+}
+
+export async function fetchWorkspaceInvitations(workspaceId: string): Promise<WorkspaceInvitationItem[]> {
+  const res = await fetch(`/api/workspaces/${workspaceId}/invitations`, { cache: "no-store" });
+  const data = await res.json();
+  if (!res.ok || !data.success) {
+    throw new Error(data.error || "Failed to load invitations");
+  }
+  return data.invitations;
+}
+
+export async function createWorkspaceInvitation(
+  workspaceId: string,
+  payload: { email: string; role: string }
+): Promise<{ id: string; email: string; role: string; inviteToken?: string }> {
+  const res = await fetch(`/api/workspaces/${workspaceId}/invitations`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json();
+  if (!res.ok || !data.success) {
+    throw new Error(data.error || "Failed to create invitation");
+  }
+  return data.invitation;
+}
+
+export async function revokeWorkspaceInvitation(workspaceId: string, inviteId: string): Promise<void> {
+  const res = await fetch(`/api/workspaces/${workspaceId}/invitations/${inviteId}`, {
+    method: "DELETE",
+  });
+  const data = await res.json();
+  if (!res.ok || !data.success) {
+    throw new Error(data.error || "Failed to revoke invitation");
+  }
+}
+
+export async function acceptWorkspaceInvitation(token: string): Promise<{ success: boolean; workspace: WorkspaceItem }> {
+  const res = await fetch("/api/workspaces/invitations/accept", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token }),
+  });
+  const data = await res.json();
+  if (!res.ok || !data.success) {
+    throw new Error(data.error || "Failed to accept invitation");
+  }
+  return data;
+}

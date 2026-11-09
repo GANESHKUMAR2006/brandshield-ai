@@ -1,6 +1,7 @@
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { ReviewerRole } from "@/types";
 import { CURRENT_USER } from "@/config/site";
+import { query } from "@/lib/db/server-db";
 
 export interface ServerSessionIdentity {
   userId: string;
@@ -70,21 +71,61 @@ export async function resolveServerSession(
     process.env.NODE_ENV === "production" ||
     process.env.NEXT_PUBLIC_APP_ENV === "production";
 
+  const validRoles: ReviewerRole[] = [
+    "admin",
+    "compliance_reviewer",
+    "legal_reviewer",
+    "creator",
+    "viewer",
+  ];
+
   try {
     const supabase = await getSupabaseServerClient();
     const { data: { user } } = await supabase.auth.getUser();
 
     if (user) {
-      // Derive verified role strictly from server-controlled app_metadata
-      // Client-writable user_metadata is NEVER trusted for role authorization
+      // 1. Check database workspace_memberships first for real multi-tenant roles & workspaces
+      try {
+        const memberRes = await query<{
+          role: string;
+          workspace_id: string;
+          slug: string;
+        }>(
+          `SELECT wm.role, w.id as workspace_id, w.slug 
+           FROM workspace_memberships wm
+           JOIN workspaces w ON wm.workspace_id = w.id
+           WHERE wm.user_id = $1 AND w.slug = $2 AND wm.status = 'active'
+           LIMIT 1`,
+          [user.id, targetWorkspaceSlug]
+        );
+
+        if (memberRes.rows.length > 0) {
+          const row = memberRes.rows[0];
+          const memberRole = validRoles.includes(row.role as ReviewerRole)
+            ? (row.role as ReviewerRole)
+            : "compliance_reviewer";
+
+          return {
+            userId: user.id,
+            userName: user.user_metadata?.name || user.email || "Verified Member",
+            userEmail: user.email || "",
+            role: memberRole,
+            workspaceId: row.workspace_id,
+            workspaceSlug: row.slug,
+            isAuthenticated: true,
+            isDemoFallback: false,
+          };
+        }
+      } catch {
+        // Continue to app_metadata check if DB query fails during initialization
+      }
+
+      // 2. Fall back to server-controlled app_metadata (e.g. for DermaGlow seed reviewers)
       const rawRole = (user.app_metadata?.role || "compliance_reviewer") as string;
-      const validRoles: ReviewerRole[] = ["admin", "compliance_reviewer", "legal_reviewer", "viewer"];
       const role: ReviewerRole = validRoles.includes(rawRole as ReviewerRole)
         ? (rawRole as ReviewerRole)
         : "compliance_reviewer";
 
-      // Derive authorized workspace memberships strictly from server-controlled app_metadata
-      // Client-writable user_metadata is NEVER trusted for tenant authorization
       const rawWorkspaces: unknown = user.app_metadata?.workspaces ?? user.app_metadata?.workspace_slug;
       const userWorkspaces: string[] = Array.isArray(rawWorkspaces)
         ? (rawWorkspaces as string[])
@@ -106,12 +147,26 @@ export async function resolveServerSession(
         );
       }
 
+      // Query real workspace ID for the target slug if available
+      let resolvedWorkspaceId = DERMAGLOW_WORKSPACE_ID;
+      try {
+        const wsRes = await query<{ id: string }>(
+          `SELECT id FROM workspaces WHERE slug = $1 LIMIT 1`,
+          [targetWorkspaceSlug]
+        );
+        if (wsRes.rows.length > 0) {
+          resolvedWorkspaceId = wsRes.rows[0].id;
+        }
+      } catch {
+        // Fall back to DERMAGLOW_WORKSPACE_ID
+      }
+
       return {
         userId: user.id,
         userName: user.user_metadata?.name || user.email || "Verified Reviewer",
         userEmail: user.email || "",
         role,
-        workspaceId: DERMAGLOW_WORKSPACE_ID,
+        workspaceId: resolvedWorkspaceId,
         workspaceSlug: targetWorkspaceSlug,
         isAuthenticated: true,
         isDemoFallback: false,
@@ -168,39 +223,84 @@ export async function resolveServerSession(
 
 /**
  * Server-side Role-Based Access Control (RBAC) Gates
+ * Supports receiving either a ReviewerRole string or a ServerSessionIdentity object.
  */
-export function canReviewClaims(role: ReviewerRole): boolean {
+function resolveRole(target: ServerSessionIdentity | ReviewerRole): ReviewerRole {
+  return typeof target === "string" ? target : target.role;
+}
+
+export function canCreateSubmissions(target: ServerSessionIdentity | ReviewerRole): boolean {
+  const role = resolveRole(target);
+  return role === "admin" || role === "compliance_reviewer" || role === "creator";
+}
+
+export function canEditSubmissions(target: ServerSessionIdentity | ReviewerRole): boolean {
+  const role = resolveRole(target);
+  return role === "admin" || role === "compliance_reviewer" || role === "creator";
+}
+
+export function canReviewClaims(target: ServerSessionIdentity | ReviewerRole): boolean {
+  const role = resolveRole(target);
   return role === "admin" || role === "compliance_reviewer" || role === "legal_reviewer";
 }
 
-export function canOverrideContradictedClaims(role: ReviewerRole): boolean {
+export function canOverrideContradictedClaims(target: ServerSessionIdentity | ReviewerRole): boolean {
+  const role = resolveRole(target);
   return role === "admin" || role === "compliance_reviewer" || role === "legal_reviewer";
 }
 
-export function canPublishSubmissions(role: ReviewerRole): boolean {
+export const canApproveOverrides = canOverrideContradictedClaims;
+
+export function canPublishSubmissions(target: ServerSessionIdentity | ReviewerRole): boolean {
+  const role = resolveRole(target);
   return role === "admin" || role === "compliance_reviewer";
 }
 
-export function canViewAudit(role: ReviewerRole): boolean {
-  return role === "admin" || role === "compliance_reviewer" || role === "legal_reviewer" || role === "viewer";
+export const canPublish = canPublishSubmissions;
+
+export function canViewAudit(target: ServerSessionIdentity | ReviewerRole): boolean {
+  const role = resolveRole(target);
+  return (
+    role === "admin" ||
+    role === "compliance_reviewer" ||
+    role === "legal_reviewer" ||
+    role === "viewer" ||
+    role === "creator"
+  );
 }
 
-export function canAccessAdminAnalytics(role: ReviewerRole): boolean {
+export function canAccessAdminAnalytics(target: ServerSessionIdentity | ReviewerRole): boolean {
+  const role = resolveRole(target);
   return role === "admin" || role === "compliance_reviewer" || role === "legal_reviewer";
 }
 
-export function canExportAudit(role: ReviewerRole): boolean {
+export function canExportAudit(target: ServerSessionIdentity | ReviewerRole): boolean {
+  const role = resolveRole(target);
   return role === "admin" || role === "compliance_reviewer" || role === "legal_reviewer";
 }
 
-export function canConfigureWorkspace(role: ReviewerRole): boolean {
+export function canConfigureWorkspace(target: ServerSessionIdentity | ReviewerRole): boolean {
+  const role = resolveRole(target);
   return role === "admin";
 }
 
-export function canManagePolicies(role: ReviewerRole): boolean {
+export function canManageWorkspaceMembers(target: ServerSessionIdentity | ReviewerRole): boolean {
+  const role = resolveRole(target);
   return role === "admin";
 }
 
-export function canViewPolicies(role: ReviewerRole): boolean {
-  return role === "admin" || role === "compliance_reviewer" || role === "legal_reviewer" || role === "viewer";
+export function canManagePolicies(target: ServerSessionIdentity | ReviewerRole): boolean {
+  const role = resolveRole(target);
+  return role === "admin";
+}
+
+export function canViewPolicies(target: ServerSessionIdentity | ReviewerRole): boolean {
+  const role = resolveRole(target);
+  return (
+    role === "admin" ||
+    role === "compliance_reviewer" ||
+    role === "legal_reviewer" ||
+    role === "viewer" ||
+    role === "creator"
+  );
 }

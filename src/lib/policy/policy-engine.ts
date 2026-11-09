@@ -27,6 +27,7 @@ const SEVERITY_WEIGHTS: Record<RuleSeverity, number> = {
 
 const ROLE_HIERARCHY: Record<ReviewerRole, number> = {
   viewer: 0,
+  creator: 0,
   compliance_reviewer: 1,
   legal_reviewer: 2,
   admin: 3,

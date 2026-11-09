@@ -210,7 +210,37 @@ export type ReviewStatus =
 
 export type ReviewDecisionType = "approved" | "rejected" | "escalated" | "modified";
 
-export type ReviewerRole = "admin" | "compliance_reviewer" | "legal_reviewer" | "viewer";
+export type ReviewerRole = "admin" | "compliance_reviewer" | "legal_reviewer" | "creator" | "viewer";
+
+export interface WorkspaceMembership {
+  id: string;
+  workspace_id: string;
+  user_id: string;
+  role: ReviewerRole;
+  status: "active" | "suspended" | "revoked";
+  created_at: string;
+  updated_at: string;
+  workspace_name?: string;
+  workspace_slug?: string;
+  user_email?: string;
+  user_name?: string;
+}
+
+export interface WorkspaceInvitation {
+  id: string;
+  workspace_id: string;
+  email: string;
+  role: ReviewerRole;
+  status: "pending" | "accepted" | "revoked" | "expired";
+  expires_at: string;
+  token_hash?: string;
+  invited_by?: string;
+  accepted_at?: string | null;
+  created_at: string;
+  updated_at?: string;
+  workspace_name?: string;
+  workspace_slug?: string;
+}
 
 export type EscalationCategory =
   | "legal"
