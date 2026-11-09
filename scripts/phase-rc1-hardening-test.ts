@@ -347,8 +347,13 @@ async function runHardeningSuite() {
       const hasLookupIndex = sqlContent.includes("CREATE INDEX IF NOT EXISTS idx_policy_versions_lookup");
       assert(hasLookupIndex, "6.5 Migration creates composite lookup index with IF NOT EXISTS");
 
-      const hasSchemaRegistry = sqlContent.includes("ON CONFLICT (version) DO NOTHING");
-      assert(hasSchemaRegistry, "6.6 Migration registry recording is idempotent (ON CONFLICT DO NOTHING)");
+      // 6.6 Migration registry recording is handled transactionally by apply-pending-migrations.js
+      const runnerPath = path.resolve(process.cwd(), "scripts/apply-pending-migrations.js");
+      const runnerContent = fs.existsSync(runnerPath) ? fs.readFileSync(runnerPath, "utf-8") : "";
+      const runnerHandlesTracking = runnerContent.includes("INSERT INTO public._schema_migrations (version, applied_at)") &&
+                                   runnerContent.includes("BEGIN") &&
+                                   runnerContent.includes("COMMIT");
+      assert(runnerHandlesTracking, "6.6 Migration runner handles transaction-wrapped registry tracking in _schema_migrations");
 
       const includesValidatedStatus = sqlContent.includes("'validated'");
       assert(includesValidatedStatus, "6.7 Status constraint includes 'validated' version lifecycle state");

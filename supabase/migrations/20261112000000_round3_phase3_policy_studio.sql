@@ -31,13 +31,3 @@ CREATE INDEX IF NOT EXISTS idx_policies_severity ON policies(severity);
 -- 3. ENSURE COMPOSITE INDEX FOR VERSION RESOLUTION
 CREATE INDEX IF NOT EXISTS idx_policy_versions_lookup 
   ON policy_versions(policy_id, version_number DESC, status);
-
--- 4. RECORD MIGRATION IN SCHEMA REGISTRY IF EXISTS
-DO $$
-BEGIN
-  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = '_schema_migrations') THEN
-    INSERT INTO _schema_migrations (version, name, applied_at)
-    VALUES ('20261112000000', 'round3_phase3_policy_studio', now())
-    ON CONFLICT (version) DO NOTHING;
-  END IF;
-END $$;
