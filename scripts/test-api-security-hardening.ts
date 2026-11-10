@@ -17,6 +17,7 @@ import {
 import { __setTestQueryOverride } from "../src/lib/db/server-db";
 import { VerificationEngine } from "../src/lib/verification/verification-engine";
 import { ExtractionService } from "../src/lib/ai/extraction/extraction-service";
+import { ReviewWorkflowService } from "../src/lib/review/review-service";
 
 import { POST as verifyClaimRoute } from "../src/app/api/claims/[id]/verify/route";
 import { POST as verifySubmissionRoute } from "../src/app/api/submissions/[id]/verify/route";
@@ -474,6 +475,49 @@ async function runApiSecurityTests() {
       true,
       "8.4 Invariant: Atomic transactions and immutable audit trail insertion logic preserved"
     );
+
+    // ========================================================================
+    // SUITE 9: Production Hook Immunity & Review Workflow Scoping
+    // ========================================================================
+    console.log("\n--- Suite 9: Production Hook Inaccessibility & Review Workflow Scoping ---");
+    const origNodeEnv = process.env.NODE_ENV;
+    try {
+      (process.env as any).NODE_ENV = "production";
+
+      let sessionHookBlocked = false;
+      try {
+        __setTestSessionOverride(null);
+      } catch (err: any) {
+        if (err.message.includes("strictly prohibited in production")) {
+          sessionHookBlocked = true;
+        }
+      }
+      assert(sessionHookBlocked, "9.1 __setTestSessionOverride strictly throws in production");
+
+      let queryHookBlocked = false;
+      try {
+        __setTestQueryOverride(async () => ({ rows: [] } as any));
+      } catch (err: any) {
+        if (err.message.includes("strictly prohibited in production")) {
+          queryHookBlocked = true;
+        }
+      }
+      assert(queryHookBlocked, "9.2 __setTestQueryOverride strictly throws in production");
+    } finally {
+      (process.env as any).NODE_ENV = origNodeEnv;
+    }
+
+    // Verify ReviewWorkflowService.reverifyModifiedClaim propagates workspaceContext
+    let reverifyContextPassed = false;
+    const testWsContext = { workspaceId: TENANT_B_WORKSPACE_ID, workspaceSlug: TENANT_B_SLUG };
+    (VerificationEngine as any).verifyClaim = async (claimId: string, wsContext?: any) => {
+      if (wsContext?.workspaceId === TENANT_B_WORKSPACE_ID && wsContext?.workspaceSlug === TENANT_B_SLUG) {
+        reverifyContextPassed = true;
+      }
+      return { runId: "rev-1", claimId, status: "supported" } as any;
+    };
+    await ReviewWorkflowService.reverifyModifiedClaim("claim-mod-1", testWsContext);
+    assert(reverifyContextPassed, "9.3 ReviewWorkflowService.reverifyModifiedClaim propagates workspace context");
 
   } finally {
     // Restore mocks and overrides

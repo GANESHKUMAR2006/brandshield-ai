@@ -750,8 +750,11 @@ export class ReviewWorkflowService {
   /**
    * Re-verifies a modified claim deterministically.
    */
-  public static async reverifyModifiedClaim(childClaimId: string) {
-    return await VerificationEngine.verifyClaim(childClaimId);
+  public static async reverifyModifiedClaim(
+    childClaimId: string,
+    workspaceContext?: { workspaceId?: string; workspaceSlug?: string }
+  ) {
+    return await VerificationEngine.verifyClaim(childClaimId, workspaceContext);
   }
 
   /**

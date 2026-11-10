@@ -101,7 +101,10 @@ export async function POST(request: NextRequest) {
     // If claim was modified, automatically trigger deterministic re-verification on the child claim
     if (result.childClaimId) {
       try {
-        await ReviewWorkflowService.reverifyModifiedClaim(result.childClaimId);
+        await ReviewWorkflowService.reverifyModifiedClaim(result.childClaimId, {
+          workspaceId: session.workspaceId,
+          workspaceSlug: session.workspaceSlug,
+        });
       } catch (revErr) {
         console.warn("Child claim re-verification queued/pending:", revErr);
       }

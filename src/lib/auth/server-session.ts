@@ -83,7 +83,11 @@ export function __setTestSessionOverride(session: ServerSessionIdentity | Error 
 export async function resolveServerSession(
   targetWorkspaceSlug: string = DERMAGLOW_WORKSPACE_SLUG
 ): Promise<ServerSessionIdentity> {
-  if (testSessionOverride !== undefined) {
+  const isProduction =
+    process.env.NODE_ENV === "production" ||
+    process.env.NEXT_PUBLIC_APP_ENV === "production";
+
+  if (!isProduction && testSessionOverride !== undefined) {
     if (testSessionOverride === null) {
       throw new AuthenticationRequiredError(
         "Authentication required: A valid authenticated session must be established."
@@ -94,10 +98,6 @@ export async function resolveServerSession(
     }
     return testSessionOverride;
   }
-
-  const isProduction =
-    process.env.NODE_ENV === "production" ||
-    process.env.NEXT_PUBLIC_APP_ENV === "production";
 
   const validRoles: ReviewerRole[] = [
     "admin",

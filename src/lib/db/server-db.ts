@@ -48,7 +48,11 @@ export async function query<T extends QueryResultRow = QueryResultRow>(
   text: string,
   params?: unknown[]
 ): Promise<QueryResult<T>> {
-  if (testQueryOverride) {
+  if (
+    process.env.NODE_ENV !== "production" &&
+    process.env.NEXT_PUBLIC_APP_ENV !== "production" &&
+    testQueryOverride
+  ) {
     return testQueryOverride(text, params);
   }
   const p = getDbPool();
