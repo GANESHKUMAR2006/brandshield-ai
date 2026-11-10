@@ -51,6 +51,8 @@ export async function updateSession(request: NextRequest) {
   const isPublicPath =
     pathname === "/login" ||
     pathname === "/forgot-password" ||
+    pathname === "/reset-password" ||
+    pathname.startsWith("/auth/callback") ||
     pathname.startsWith("/api/health") ||
     pathname.startsWith("/api/auth/");
 

@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
       "https://brandshield-ai-1.onrender.com";
 
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${origin}/login?recovery=success`,
+      redirectTo: `${origin}/auth/callback?next=/reset-password`,
     });
 
     if (error) {
