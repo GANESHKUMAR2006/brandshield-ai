@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { resolveServerSession } from "@/lib/auth/server-session";
+import crypto from "crypto";
+import { resolveServerSession, isValidUUID } from "@/lib/auth/server-session";
 import { query } from "@/lib/db/server-db";
 
 export async function GET(
@@ -20,13 +21,14 @@ export async function GET(
       return NextResponse.json({ success: false, error: "Workspace not found" }, { status: 404 });
     }
 
-    const slug = wsCheck.rows[0].slug;
+    // Verify caller is member of workspace (safe from non-UUID demo identity leakage)
+    const isMember = isValidUUID(session.userId)
+      ? await query(
+          `SELECT id FROM workspace_memberships WHERE workspace_id = $1 AND user_id = $2 AND status = 'active' LIMIT 1`,
+          [id, session.userId]
+        )
+      : { rows: [] };
 
-    // Verify caller is member of workspace
-    const isMember = await query(
-      `SELECT id FROM workspace_memberships WHERE workspace_id = $1 AND user_id = $2 AND status = 'active' LIMIT 1`,
-      [id, session.userId]
-    );
     if (isMember.rows.length === 0 && session.workspaceId !== id) {
       return NextResponse.json(
         { success: false, error: "Forbidden: You are not an active member of this workspace" },
@@ -35,7 +37,6 @@ export async function GET(
     }
 
     // Query active members with user details
-    // If auth.users table is accessible, join with auth.users email and raw_user_meta_data
     let members: Array<{
       id: string;
       userId: string;
@@ -112,8 +113,10 @@ export async function GET(
       members,
     });
   } catch (err) {
+    const correlationId = crypto.randomUUID();
+    console.error(`[GET /api/workspaces/[id]/members Error] [CorrelationId: ${correlationId}]:`, err);
     return NextResponse.json(
-      { success: false, error: err instanceof Error ? err.message : "Failed to load workspace members" },
+      { success: false, error: "Failed to load workspace members", correlationId },
       { status: 500 }
     );
   }

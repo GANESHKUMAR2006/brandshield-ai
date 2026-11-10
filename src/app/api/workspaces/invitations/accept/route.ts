@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import crypto from "crypto";
-import { resolveServerSession } from "@/lib/auth/server-session";
+import { resolveAuthenticatedUser, isValidUUID } from "@/lib/auth/server-session";
 import { query, withTransaction } from "@/lib/db/server-db";
 import { AuditService } from "@/lib/audit/audit-service";
 
@@ -11,7 +11,21 @@ const acceptSchema = z.object({
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await resolveServerSession();
+    const user = await resolveAuthenticatedUser(request);
+    if (!user || !user.isAuthenticated) {
+      return NextResponse.json(
+        { success: false, error: "Authentication required to accept an invitation. Please sign in." },
+        { status: 401 }
+      );
+    }
+
+    if (!isValidUUID(user.id)) {
+      console.error(`[POST /api/workspaces/invitations/accept] Rejected non-UUID user id: "${user.id}"`);
+      return NextResponse.json(
+        { success: false, error: "A valid authenticated user account is required to accept an invitation." },
+        { status: 401 }
+      );
+    }
 
     let body: unknown;
     try {
@@ -86,7 +100,7 @@ export async function POST(request: NextRequest) {
         `UPDATE workspace_invitations
          SET status = 'accepted', accepted_at = now(), accepted_by = $1, updated_at = now()
          WHERE id = $2`,
-        [session.userId, invite.id]
+        [user.id, invite.id]
       );
 
       await client.query(
@@ -94,18 +108,22 @@ export async function POST(request: NextRequest) {
          VALUES ($1, $2, $3, 'active')
          ON CONFLICT (workspace_id, user_id) 
          DO UPDATE SET role = EXCLUDED.role, status = 'active', updated_at = now()`,
-        [invite.workspace_id, session.userId, invite.role]
+        [invite.workspace_id, user.id, invite.role]
       );
     });
 
-    await AuditService.recordEvent({
-      workspaceId: invite.workspace_id,
-      actorId: session.userId,
-      entityType: "workspace",
-      entityId: invite.id,
-      action: "invitation_accepted",
-      afterState: { acceptedBy: session.userId, role: invite.role },
-    });
+    try {
+      await AuditService.recordEvent({
+        workspaceId: invite.workspace_id,
+        actorId: user.id,
+        entityType: "workspace",
+        entityId: invite.id,
+        action: "invitation_accepted",
+        afterState: { acceptedBy: user.id, role: invite.role },
+      });
+    } catch (auditErr) {
+      console.error("[POST /api/workspaces/invitations/accept] Audit warning:", auditErr);
+    }
 
     return NextResponse.json({
       success: true,
@@ -118,8 +136,11 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (err) {
+    const correlationId = crypto.randomUUID();
+    console.error(`[POST /api/workspaces/invitations/accept Error] [CorrelationId: ${correlationId}]:`, err);
+
     return NextResponse.json(
-      { success: false, error: err instanceof Error ? err.message : "Failed to accept invitation" },
+      { success: false, error: "Failed to accept invitation. An unexpected error occurred.", correlationId },
       { status: 500 }
     );
   }

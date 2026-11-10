@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { resolveServerSession, canConfigureWorkspace } from "@/lib/auth/server-session";
+import crypto from "crypto";
+import { resolveServerSession, canConfigureWorkspace, isValidUUID } from "@/lib/auth/server-session";
 import { query } from "@/lib/db/server-db";
 import { AuditService } from "@/lib/audit/audit-service";
 
@@ -36,11 +37,14 @@ export async function GET(
 
     const ws = wsRes.rows[0];
 
-    // Verify user membership in this workspace
-    const memberCheck = await query(
-      `SELECT id, role, status FROM workspace_memberships WHERE workspace_id = $1 AND user_id = $2 AND status = 'active' LIMIT 1`,
-      [id, session.userId]
-    );
+    // Verify user membership in this workspace (prevent non-UUID demo leakage into UUID parameter)
+    const memberCheck = isValidUUID(session.userId)
+      ? await query(
+          `SELECT id, role, status FROM workspace_memberships WHERE workspace_id = $1 AND user_id = $2 AND status = 'active' LIMIT 1`,
+          [id, session.userId]
+        )
+      : { rows: [] };
+
     if (memberCheck.rows.length === 0 && session.workspaceId !== id) {
       return NextResponse.json(
         { success: false, error: "Forbidden: You are not a member of this workspace" },
@@ -69,8 +73,10 @@ export async function GET(
       },
     });
   } catch (err) {
+    const correlationId = crypto.randomUUID();
+    console.error(`[GET /api/workspaces/[id] Error] [CorrelationId: ${correlationId}]:`, err);
     return NextResponse.json(
-      { success: false, error: err instanceof Error ? err.message : "Failed to load workspace" },
+      { success: false, error: "Failed to load workspace", correlationId },
       { status: 500 }
     );
   }
@@ -84,11 +90,13 @@ export async function PATCH(
     const { id } = await params;
     const session = await resolveServerSession();
 
-    // Check workspace admin permission
-    const memberCheck = await query<{ role: string }>(
-      `SELECT role FROM workspace_memberships WHERE workspace_id = $1 AND user_id = $2 AND status = 'active' LIMIT 1`,
-      [id, session.userId]
-    );
+    // Check workspace admin permission (prevent non-UUID demo leakage into UUID parameter)
+    const memberCheck = isValidUUID(session.userId)
+      ? await query<{ role: string }>(
+          `SELECT role FROM workspace_memberships WHERE workspace_id = $1 AND user_id = $2 AND status = 'active' LIMIT 1`,
+          [id, session.userId]
+        )
+      : { rows: [] };
 
     const userRole = memberCheck.rows[0]?.role || (session.workspaceId === id ? session.role : "viewer");
     if (!canConfigureWorkspace(userRole as any)) {
@@ -127,14 +135,18 @@ export async function PATCH(
       return NextResponse.json({ success: false, error: "Workspace not found" }, { status: 404 });
     }
 
-    await AuditService.recordEvent({
-      workspaceId: id,
-      actorId: session.userId,
-      entityType: "workspace",
-      entityId: id,
-      action: "workspace_updated",
-      afterState: { name },
-    });
+    try {
+      await AuditService.recordEvent({
+        workspaceId: id,
+        actorId: session.userId,
+        entityType: "workspace",
+        entityId: id,
+        action: "workspace_updated",
+        afterState: { name },
+      });
+    } catch (auditErr) {
+      console.error("[PATCH /api/workspaces/[id]] Audit warning:", auditErr);
+    }
 
     return NextResponse.json({
       success: true,
@@ -142,8 +154,10 @@ export async function PATCH(
       workspace: updateRes.rows[0],
     });
   } catch (err) {
+    const correlationId = crypto.randomUUID();
+    console.error(`[PATCH /api/workspaces/[id] Error] [CorrelationId: ${correlationId}]:`, err);
     return NextResponse.json(
-      { success: false, error: err instanceof Error ? err.message : "Failed to update workspace" },
+      { success: false, error: "Failed to update workspace", correlationId },
       { status: 500 }
     );
   }

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import crypto from "crypto";
-import { resolveServerSession, canManageWorkspaceMembers } from "@/lib/auth/server-session";
+import { resolveServerSession, canManageWorkspaceMembers, isValidUUID } from "@/lib/auth/server-session";
 import { query } from "@/lib/db/server-db";
 import { AuditService } from "@/lib/audit/audit-service";
 import { ReviewerRole } from "@/types";
@@ -19,11 +19,13 @@ export async function GET(
     const { id } = await params;
     const session = await resolveServerSession();
 
-    // Verify caller is admin or member of workspace
-    const memberCheck = await query<{ role: string }>(
-      `SELECT role FROM workspace_memberships WHERE workspace_id = $1 AND user_id = $2 AND status = 'active' LIMIT 1`,
-      [id, session.userId]
-    );
+    // Verify caller is admin or member of workspace (safe from non-UUID demo identity leakage)
+    const memberCheck = isValidUUID(session.userId)
+      ? await query<{ role: string }>(
+          `SELECT role FROM workspace_memberships WHERE workspace_id = $1 AND user_id = $2 AND status = 'active' LIMIT 1`,
+          [id, session.userId]
+        )
+      : { rows: [] };
 
     const callerRole = memberCheck.rows[0]?.role || (session.workspaceId === id ? session.role : "viewer");
     if (!canManageWorkspaceMembers(callerRole as ReviewerRole)) {
@@ -60,8 +62,10 @@ export async function GET(
       })),
     });
   } catch (err) {
+    const correlationId = crypto.randomUUID();
+    console.error(`[GET /api/workspaces/[id]/invitations Error] [CorrelationId: ${correlationId}]:`, err);
     return NextResponse.json(
-      { success: false, error: err instanceof Error ? err.message : "Failed to load invitations" },
+      { success: false, error: "Failed to load invitations", correlationId },
       { status: 500 }
     );
   }
@@ -75,11 +79,13 @@ export async function POST(
     const { id } = await params;
     const session = await resolveServerSession();
 
-    // Verify admin permission
-    const memberCheck = await query<{ role: string }>(
-      `SELECT role FROM workspace_memberships WHERE workspace_id = $1 AND user_id = $2 AND status = 'active' LIMIT 1`,
-      [id, session.userId]
-    );
+    // Verify admin permission (safe from non-UUID demo identity leakage)
+    const memberCheck = isValidUUID(session.userId)
+      ? await query<{ role: string }>(
+          `SELECT role FROM workspace_memberships WHERE workspace_id = $1 AND user_id = $2 AND status = 'active' LIMIT 1`,
+          [id, session.userId]
+        )
+      : { rows: [] };
 
     const callerRole = memberCheck.rows[0]?.role || (session.workspaceId === id ? session.role : "viewer");
     if (!canManageWorkspaceMembers(callerRole as ReviewerRole)) {
@@ -149,20 +155,24 @@ export async function POST(
       `INSERT INTO workspace_invitations (workspace_id, email, role, token_hash, status, expires_at, invited_by)
        VALUES ($1, $2, $3, $4, 'pending', $5, $6)
        RETURNING id, email, role, expires_at, created_at`,
-      [id, normalizedEmail, role, tokenHash, expiresAt.toISOString(), session.userId]
+      [id, normalizedEmail, role, tokenHash, expiresAt.toISOString(), isValidUUID(session.userId) ? session.userId : null]
     );
 
     const createdInvite = insertRes.rows[0];
 
     // Audit log (never log raw tokens)
-    await AuditService.recordEvent({
-      workspaceId: id,
-      actorId: session.userId,
-      entityType: "workspace",
-      entityId: createdInvite.id,
-      action: "invitation_created",
-      afterState: { email: normalizedEmail, role, expiresAt: createdInvite.expires_at },
-    });
+    try {
+      await AuditService.recordEvent({
+        workspaceId: id,
+        actorId: session.userId,
+        entityType: "workspace",
+        entityId: createdInvite.id,
+        action: "invitation_created",
+        afterState: { email: normalizedEmail, role, expiresAt: createdInvite.expires_at },
+      });
+    } catch (auditErr) {
+      console.error("[POST /api/workspaces/[id]/invitations] Audit warning:", auditErr);
+    }
 
     return NextResponse.json(
       {
@@ -180,8 +190,10 @@ export async function POST(
       { status: 201 }
     );
   } catch (err) {
+    const correlationId = crypto.randomUUID();
+    console.error(`[POST /api/workspaces/[id]/invitations Error] [CorrelationId: ${correlationId}]:`, err);
     return NextResponse.json(
-      { success: false, error: err instanceof Error ? err.message : "Failed to create invitation" },
+      { success: false, error: "Failed to create invitation", correlationId },
       { status: 500 }
     );
   }

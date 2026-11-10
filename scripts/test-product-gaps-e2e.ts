@@ -207,7 +207,7 @@ store.workspaces.push({
 store.memberships.push({
   id: crypto.randomUUID(),
   workspace_id: DERMAGLOW_ID,
-  user_id: "usr-dg-admin",
+  user_id: "00000000-0000-4000-a000-000000000099",
   role: "admin",
   status: "active",
 });
@@ -631,7 +631,7 @@ async function runAllProductGapsTests() {
 
   // User identities
   const userAdmin: ServerSessionIdentity = {
-    userId: "usr-aura-admin",
+    userId: "a1111111-1111-4111-a111-111111111111",
     userName: "Dr. Alicia Vance",
     userEmail: "alicia@auraskin.com",
     role: "admin",
@@ -642,7 +642,7 @@ async function runAllProductGapsTests() {
   };
 
   const userReviewer: ServerSessionIdentity = {
-    userId: "usr-aura-reviewer",
+    userId: "b2222222-2222-4222-b222-222222222222",
     userName: "Kavita Rao",
     userEmail: "kavita@auraskin.com",
     role: "compliance_reviewer",
@@ -653,7 +653,7 @@ async function runAllProductGapsTests() {
   };
 
   const userViewer: ServerSessionIdentity = {
-    userId: "usr-aura-viewer",
+    userId: "c3333333-3333-4333-c333-333333333333",
     userName: "Guest Viewer",
     userEmail: "viewer@auraskin.com",
     role: "viewer",
@@ -664,7 +664,7 @@ async function runAllProductGapsTests() {
   };
 
   const dermaGlowSession: ServerSessionIdentity = {
-    userId: "usr-dg-admin",
+    userId: "00000000-0000-4000-a000-000000000099",
     userName: "DermaGlow Admin",
     userEmail: "admin@dermaglow.com",
     role: "admin",

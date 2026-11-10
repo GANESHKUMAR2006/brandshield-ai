@@ -15,6 +15,26 @@ export interface ServerSessionIdentity {
   isDemoFallback: boolean;
 }
 
+export interface AuthenticatedUser {
+  id: string;
+  email?: string;
+  name?: string;
+  isAuthenticated: boolean;
+}
+
+export interface ResolveSessionOptions {
+  allowNoWorkspace?: boolean;
+}
+
+/**
+ * Validates whether an identifier is a standard RFC 4122 UUID.
+ * Fails closed on non-string or malformed identifiers (e.g. demo string "usr-01-elena").
+ */
+export function isValidUUID(id: unknown): id is string {
+  if (typeof id !== "string") return false;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+}
+
 export const DERMAGLOW_WORKSPACE_ID = "00000000-0000-0000-0000-000000000001";
 export const DERMAGLOW_WORKSPACE_SLUG = "dermaglow";
 
@@ -81,9 +101,72 @@ export function __setTestSessionOverride(session: ServerSessionIdentity | Error 
   testSessionOverride = session;
 }
 
+/**
+ * Resolves verified authenticated user identity directly from Supabase server session.
+ * 
+ * Strict Guarantees:
+ * 1. Obtains real authenticated user UUID via supabase.auth.getUser().
+ * 2. Never returns demo fallback IDs (e.g. "usr-01-elena").
+ * 3. Does not require pre-existing workspace membership (enables first workspace creation).
+ * 4. Fails closed and returns null if unauthenticated.
+ */
+export async function resolveAuthenticatedUser(
+  request?: NextRequest | Request
+): Promise<AuthenticatedUser | null> {
+  const isProduction =
+    process.env.NODE_ENV === "production" ||
+    process.env.NEXT_PUBLIC_APP_ENV === "production";
+
+  if (!isProduction && testSessionOverride !== undefined) {
+    if (testSessionOverride === null) {
+      return null;
+    }
+    if (testSessionOverride instanceof Error) {
+      throw testSessionOverride;
+    }
+    if (testSessionOverride && testSessionOverride.isAuthenticated) {
+      if (testSessionOverride.isDemoFallback || testSessionOverride.userId === CURRENT_USER.id) {
+        return null;
+      }
+      return {
+        id: testSessionOverride.userId,
+        email: testSessionOverride.userEmail,
+        name: testSessionOverride.userName,
+        isAuthenticated: true,
+      };
+    }
+    return null;
+  }
+
+  try {
+    const supabase = await getSupabaseServerClient();
+    const { data: { user }, error } = await supabase.auth.getUser();
+
+    if (error || !user) {
+      return null;
+    }
+
+    if (!isValidUUID(user.id)) {
+      console.error(`[resolveAuthenticatedUser] Supabase returned invalid non-UUID user id: "${user.id}"`);
+      return null;
+    }
+
+    return {
+      id: user.id,
+      email: user.email,
+      name: user.user_metadata?.name || user.email || "Verified Member",
+      isAuthenticated: true,
+    };
+  } catch (err) {
+    console.error("[resolveAuthenticatedUser] Failed to resolve Supabase server session:", err);
+    return null;
+  }
+}
+
 export async function resolveServerSession(
   targetWorkspaceSlug?: string,
-  request?: NextRequest | Request
+  request?: NextRequest | Request,
+  options?: ResolveSessionOptions
 ): Promise<ServerSessionIdentity> {
   const isProduction =
     process.env.NODE_ENV === "production" ||
@@ -255,6 +338,18 @@ export async function resolveServerSession(
         }
       } else if (userWorkspaces.length > 0) {
         effectiveSlug = userWorkspaces[0];
+      } else if (options?.allowNoWorkspace) {
+        // Authenticated user with no workspace memberships allowed for workspace creation flows
+        return {
+          userId: user.id,
+          userName: user.user_metadata?.name || user.email || "Verified Member",
+          userEmail: user.email || "",
+          role: "admin",
+          workspaceId: "",
+          workspaceSlug: "",
+          isAuthenticated: true,
+          isDemoFallback: false,
+        };
       } else {
         throw new WorkspaceAccessError(
           `Forbidden: User "${user.id}" does not belong to any authorized workspace.`
