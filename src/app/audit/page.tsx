@@ -5,6 +5,8 @@ import Link from "next/link";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { fetchAuditEvents, AuditLogItem } from "@/lib/api-client";
 import { formatDateTime } from "@/lib/utils/formatters";
+import { AuditEventSummary } from "@/components/audit/AuditEventSummary";
+import { AuditRecordModal } from "@/components/audit/AuditRecordModal";
 import {
   History,
   CheckCircle2,
@@ -329,12 +331,10 @@ export default function AuditPage() {
                       )}
                     </div>
 
-                    {ev.after_state && (
-                      <div className="mt-2 p-2.5 rounded-lg bg-slate-950/80 border border-slate-800 font-mono text-[11px] text-slate-300 overflow-x-auto group-hover:border-slate-700 transition-colors">
-                        {JSON.stringify(ev.after_state).slice(0, 160)}
-                        {JSON.stringify(ev.after_state).length > 160 ? "..." : ""}
-                      </div>
-                    )}
+                    <AuditEventSummary
+                      action={ev.action}
+                      metadata={ev.after_state}
+                    />
                   </div>
                 </div>
               ))}
@@ -345,110 +345,11 @@ export default function AuditPage() {
 
       {/* Event Detail Modal */}
       {selectedEvent && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#090D16]/80 backdrop-blur-md">
-          <div className="bg-[#0B0F19] rounded-2xl border border-slate-700/80 shadow-2xl max-w-2xl w-full p-6 max-h-[85vh] overflow-y-auto text-slate-100">
-            <div className="flex items-start justify-between pb-3 border-b border-slate-800">
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className={`px-2.5 py-0.5 rounded text-xs font-semibold border ${getActionBadgeColor(selectedEvent.action)}`}>
-                    {selectedEvent.action.replace(/_/g, " ").toUpperCase()}
-                  </span>
-                  <span className="text-xs text-slate-400 font-mono">
-                    ID: {selectedEvent.id}
-                  </span>
-                </div>
-                <h3 className="text-base font-bold text-white mt-1">
-                  Audit Record Details
-                </h3>
-              </div>
-              <button
-                onClick={() => setSelectedEvent(null)}
-                className="p-1 text-slate-400 hover:text-white cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="mt-4 space-y-3.5 text-xs">
-              <div className="grid grid-cols-2 gap-3 bg-slate-950/60 p-3 rounded-xl border border-slate-800">
-                <div>
-                  <span className="text-slate-400">Actor Identity:</span>
-                  <div className="font-semibold text-white">{selectedEvent.actor_id}</div>
-                </div>
-                <div>
-                  <span className="text-slate-400">Actor Role:</span>
-                  <div className="font-semibold text-white capitalize">
-                    {String(selectedEvent.after_state?.reviewer_role || "System / Reviewer")}
-                  </div>
-                </div>
-                <div>
-                  <span className="text-slate-400">Target Entity Type:</span>
-                  <div className="font-semibold text-white capitalize">{selectedEvent.entity_type}</div>
-                </div>
-                <div>
-                  <span className="text-slate-400">Target Entity UUID:</span>
-                  <div className="font-mono text-cyan-300 break-all">{selectedEvent.entity_id}</div>
-                </div>
-                <div>
-                  <span className="text-slate-400">Exact Timestamp (UTC):</span>
-                  <div className="font-semibold text-white">{formatDateTime(selectedEvent.created_at)}</div>
-                </div>
-                <div>
-                  <span className="text-slate-400">Ledger Immutability:</span>
-                  <div className="font-semibold text-emerald-400">Append-Only Verified</div>
-                </div>
-              </div>
-
-              {selectedEvent.before_state && (
-                <div>
-                  <span className="font-semibold text-slate-300">Pre-Change State (Before):</span>
-                  <pre className="mt-1 p-3 bg-slate-950 text-slate-300 rounded-xl font-mono text-[11px] overflow-x-auto border border-slate-800">
-                    {JSON.stringify(selectedEvent.before_state, null, 2)}
-                  </pre>
-                </div>
-              )}
-
-              <div>
-                <span className="font-semibold text-slate-300">Recorded State & Metadata (After):</span>
-                <pre className="mt-1 p-3 bg-slate-950 text-cyan-300 rounded-xl font-mono text-[11px] overflow-x-auto border border-slate-800">
-                  {JSON.stringify(selectedEvent.after_state, null, 2)}
-                </pre>
-              </div>
-
-              {/* Entity Navigation link if claim or submission */}
-              <div className="pt-2 flex justify-between items-center border-t border-slate-800">
-                <span className="text-[11px] text-slate-500">
-                  Tamper-evident record sealed in PostgreSQL.
-                </span>
-
-                <div className="flex gap-2">
-                  {selectedEvent.entity_type === "claim" && (
-                    <Link
-                      href="/reviews"
-                      className="px-3 py-1.5 bg-violet-950/80 hover:bg-violet-900 border border-violet-800/60 text-violet-300 font-semibold rounded-xl text-xs"
-                    >
-                      View in Review Queue
-                    </Link>
-                  )}
-                  {selectedEvent.entity_type === "submission" && (
-                    <Link
-                      href="/submissions"
-                      className="px-3 py-1.5 bg-violet-950/80 hover:bg-violet-900 border border-violet-800/60 text-violet-300 font-semibold rounded-xl text-xs"
-                    >
-                      View Submissions
-                    </Link>
-                  )}
-                  <button
-                    onClick={() => setSelectedEvent(null)}
-                    className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-white font-medium rounded-xl text-xs cursor-pointer border border-slate-700"
-                  >
-                    Close
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+        <AuditRecordModal
+          event={selectedEvent}
+          onClose={() => setSelectedEvent(null)}
+          getActionBadgeColor={getActionBadgeColor}
+        />
       )}
     </AppLayout>
   );
