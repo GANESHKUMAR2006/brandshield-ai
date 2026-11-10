@@ -19,9 +19,9 @@ export function VerificationFlow() {
       </div>
 
       {/* 3-Stage Connected Nodes in One Horizontal Row */}
-      <div className="verification-flow">
+      <div className="verification-flow grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 sm:gap-2.5 md:gap-3">
         {/* Node 1: Evidence Source */}
-        <div className="verification-card bg-[#10172c] border border-slate-800/90 rounded-xl p-3 sm:p-3.5 space-y-2">
+        <div className="verification-card bg-[#10172c] border border-slate-800/90 rounded-xl p-3 sm:p-3.5 space-y-2 h-full flex flex-col justify-between hover:border-slate-700/80 transition-all">
           <div className="flex items-center gap-1.5 flex-wrap">
             <span className="px-1.5 py-0.5 rounded text-[10px] font-bold font-mono bg-cyan-950 text-cyan-300 border border-cyan-800/50">
               01
@@ -44,18 +44,13 @@ export function VerificationFlow() {
           </div>
         </div>
 
-        {/* Connector 1 */}
-        <div className="flex flex-col items-center justify-center shrink-0 text-center py-1 sm:py-0 px-0.5">
-          <span className="text-[8px] font-mono tracking-widest text-cyan-400 uppercase whitespace-nowrap mb-0.5">
-            Automated Check
-          </span>
-          <div className="flex items-center text-cyan-400">
-            <ArrowRight className="w-3.5 h-3.5 text-cyan-400 rotate-90 sm:rotate-0" />
-          </div>
+        {/* Connector 1: Vertically centered horizontal arrow */}
+        <div className="flex items-center justify-center shrink-0 text-cyan-400/80 py-1 sm:py-0 px-0.5" aria-hidden="true">
+          <ArrowRight className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-cyan-400 rotate-90 sm:rotate-0 transition-transform" />
         </div>
 
         {/* Node 2: Claim Verification */}
-        <div className="verification-card bg-[#10172c] border border-slate-800/90 rounded-xl p-3 sm:p-3.5 space-y-2">
+        <div className="verification-card bg-[#10172c] border border-slate-800/90 rounded-xl p-3 sm:p-3.5 space-y-2 h-full flex flex-col justify-between hover:border-slate-700/80 transition-all">
           <div className="flex items-center gap-1.5 flex-wrap">
             <span className="px-1.5 py-0.5 rounded text-[10px] font-bold font-mono bg-cyan-950 text-cyan-300 border border-cyan-800/50">
               02
@@ -78,18 +73,13 @@ export function VerificationFlow() {
           </div>
         </div>
 
-        {/* Connector 2 */}
-        <div className="flex flex-col items-center justify-center shrink-0 text-center py-1 sm:py-0 px-0.5">
-          <span className="text-[8px] font-mono tracking-widest text-cyan-400 uppercase whitespace-nowrap mb-0.5">
-            Verification Flow
-          </span>
-          <div className="flex items-center text-cyan-400">
-            <ArrowRight className="w-3.5 h-3.5 text-cyan-400 rotate-90 sm:rotate-0" />
-          </div>
+        {/* Connector 2: Vertically centered horizontal arrow */}
+        <div className="flex items-center justify-center shrink-0 text-cyan-400/80 py-1 sm:py-0 px-0.5" aria-hidden="true">
+          <ArrowRight className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-cyan-400 rotate-90 sm:rotate-0 transition-transform" />
         </div>
 
         {/* Node 3: Human Oversight */}
-        <div className="verification-card bg-[#10172c] border border-slate-800/90 rounded-xl p-3 sm:p-3.5 space-y-2">
+        <div className="verification-card bg-[#10172c] border border-slate-800/90 rounded-xl p-3 sm:p-3.5 space-y-2 h-full flex flex-col justify-between hover:border-slate-700/80 transition-all">
           <div className="flex items-center gap-1.5 flex-wrap">
             <span className="px-1.5 py-0.5 rounded text-[10px] font-bold font-mono bg-emerald-950 text-emerald-300 border border-emerald-800/50">
               03
