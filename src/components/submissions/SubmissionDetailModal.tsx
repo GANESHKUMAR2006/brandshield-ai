@@ -52,6 +52,15 @@ export function SubmissionDetailModal({
   const [revisedContent, setRevisedContent] = useState("");
   const [activeTab, setActiveTab] = useState<"current" | "history" | "claims">("current");
 
+  // Auto-dismiss temporary success notification after 5 seconds
+  useEffect(() => {
+    if (!successMsg) return;
+    const timer = setTimeout(() => {
+      setSuccessMsg(null);
+    }, 5000);
+    return () => clearTimeout(timer);
+  }, [successMsg]);
+
   const handleRunExtraction = async () => {
     if (!details || isExtracting) return;
     setIsExtracting(true);
@@ -62,8 +71,13 @@ export function SubmissionDetailModal({
         versionId: details.current_version_id || undefined,
         forceReextract: details.claims.length === 0,
       });
+      const count = res.claimsCount ?? res.claims?.length ?? 0;
       setSuccessMsg(
-        `AI Claim Extraction complete: identified ${res.claimsCount} claims in ${res.executionTimeMs}ms via ${res.provider} (${res.model}).`
+        `AI Claim Extraction complete: Identified ${count} ${count === 1 ? "claim" : "claims"}.`
+      );
+      // Provider and model details remain available in internal developer logs
+      console.info(
+        `[AI Claim Extraction] Extracted ${count} claims in ${res.executionTimeMs}ms via ${res.provider} (${res.model}).`
       );
       await loadDetails(details.id);
       setActiveTab("claims");
@@ -284,9 +298,19 @@ export function SubmissionDetailModal({
           </div>
         )}
         {successMsg && (
-          <div className="p-3 mx-5 mt-4 rounded-xl bg-emerald-950/40 border border-emerald-800/60 text-emerald-300 text-xs flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-            <span>{successMsg}</span>
+          <div className="p-3 mx-5 mt-4 rounded-xl bg-emerald-950/40 border border-emerald-800/60 text-emerald-300 text-xs flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span>{successMsg}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setSuccessMsg(null)}
+              className="text-emerald-400/70 hover:text-emerald-200 transition-colors p-0.5 rounded cursor-pointer"
+              aria-label="Dismiss notification"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
           </div>
         )}
 
