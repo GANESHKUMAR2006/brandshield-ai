@@ -10,6 +10,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { query } from "@/lib/db/server-db";
 import { resolveServerSession, AuthenticationRequiredError } from "@/lib/auth/server-session";
 import { EvidenceIntelligenceService } from "@/lib/rag/linking/evidence-intelligence-service";
+import { EmbeddingProviderError } from "@/lib/rag/embeddings/embedding-provider";
 
 // GET /api/claims/[id]/evidence
 export async function GET(
@@ -102,9 +103,9 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params;
   try {
     const session = await resolveServerSession();
-    const { id } = await params;
 
     let body: {
       similarityThreshold?: number;
@@ -126,16 +127,40 @@ export async function POST(
       }
     );
 
+    const message =
+      result.retrievedCount === 0
+        ? `Evidence search complete: No matching evidence items found for claim "${id}".`
+        : `Retrieved and linked ${result.retrievedCount} evidence items for claim "${id}".`;
+
     return NextResponse.json({
       success: true,
-      message: `Retrieved and linked ${result.retrievedCount} evidence items for claim "${id}".`,
+      message,
       data: result,
     });
   } catch (err: unknown) {
     if (err instanceof AuthenticationRequiredError) {
       return NextResponse.json({ error: "Authentication required", details: err.message }, { status: 401 });
     }
+
+    if (err instanceof EmbeddingProviderError) {
+      console.error(
+        `[Evidence Discovery] Embedding provider configuration failure for claim "${id}":`,
+        err.message
+      );
+      return NextResponse.json(
+        {
+          success: false,
+          errorType: "PROVIDER_CONFIGURATION_ERROR",
+          error:
+            "Evidence discovery service is currently unavailable. The semantic embedding provider is not configured. Please contact your workspace administrator.",
+          details: process.env.NODE_ENV !== "production" ? err.message : undefined,
+        },
+        { status: 503 }
+      );
+    }
+
     const message = err instanceof Error ? err.message : "Evidence linking failed";
+    console.error(`[Evidence Discovery] Error for claim "${id}":`, message);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

@@ -146,7 +146,7 @@ export class EvidenceIntelligenceService {
             ) VALUES ($1, $2, 'claim', $3, 'claim_evidence_linked', $4)`,
             [
               claim.workspace_id,
-              session.userName,
+              (session.userId || session.userName || 'system'),
               claim.id,
               JSON.stringify({
                 claim_id: claim.id,

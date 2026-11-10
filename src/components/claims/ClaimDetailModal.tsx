@@ -70,6 +70,14 @@ function ClaimDetailModalInner({
   const [overrideReason, setOverrideReason] = useState("");
   const [escalationCategory, setEscalationCategory] = useState<EscalationCategory>("regulatory");
   const [modifiedText, setModifiedText] = useState(claim.suggested_correction || claim.claim_text);
+  // Auto-dismiss temporary success notification after 5 seconds
+  useEffect(() => {
+    if (!successMsg) return;
+    const timer = setTimeout(() => {
+      setSuccessMsg(null);
+    }, 5000);
+    return () => clearTimeout(timer);
+  }, [successMsg]);
   const [activeCitationModal, setActiveCitationModal] = useState<{
     claimId: string;
     claimText: string;
@@ -120,12 +128,28 @@ function ClaimDetailModalInner({
     setSuccessMsg(null);
     try {
       const res = await discoverClaimEvidence(claim.id);
-      setSuccessMsg(res.message || "Evidence retrieved successfully.");
+      if (res.data && res.data.retrievedCount === 0) {
+        setSuccessMsg("Evidence search completed: No matching clinical or promotional documentation found for this claim.");
+      } else {
+        setSuccessMsg(res.message || "Evidence retrieved successfully.");
+      }
       const fresh = await fetchClaimDetail(claim.id);
       setClaim(fresh);
       if (onVerified) onVerified();
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Evidence discovery failed");
+      console.error("[ClaimDetailModal] Evidence discovery failed:", err);
+      const rawMessage = err instanceof Error ? err.message : "Evidence discovery failed";
+      if (
+        rawMessage.includes("embedding provider") ||
+        rawMessage.includes("PROVIDER_CONFIGURATION_ERROR") ||
+        rawMessage.includes("OPENAI_API_KEY")
+      ) {
+        setError(
+          "Evidence discovery is currently unavailable: The semantic search service is not configured. Please contact your workspace administrator."
+        );
+      } else {
+        setError(rawMessage);
+      }
     } finally {
       setIsRetrievingEvidence(false);
     }
@@ -239,9 +263,19 @@ function ClaimDetailModalInner({
           </div>
         )}
         {successMsg && (
-          <div className="mx-6 mt-4 p-3 rounded-xl bg-emerald-950/40 border border-emerald-800/60 text-emerald-300 text-xs flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-            <span>{successMsg}</span>
+          <div className="mx-6 mt-4 p-3 rounded-xl bg-emerald-950/40 border border-emerald-800/60 text-emerald-300 text-xs flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span>{successMsg}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setSuccessMsg(null)}
+              className="text-emerald-400/70 hover:text-emerald-200 transition-colors p-0.5 rounded cursor-pointer"
+              aria-label="Dismiss notification"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
           </div>
         )}
 

@@ -60,7 +60,8 @@ export function getConfiguredEmbeddingProvider(): EmbeddingProvider {
     if (!apiKey || apiKey.startsWith("sk-placeholder")) {
       if (isProduction) {
         throw new EmbeddingProviderError(
-          "OpenAI provider selected in production, but valid OPENAI_API_KEY is missing."
+          "OpenAI provider selected in production, but valid OPENAI_API_KEY is missing. " +
+            "Please configure OPENAI_API_KEY in Render environment variables."
         );
       }
       // In dev mode when API key is missing, warn or require explicit mock setting
@@ -72,9 +73,51 @@ export function getConfiguredEmbeddingProvider(): EmbeddingProvider {
     return new OpenAIEmbeddingProvider();
   }
 
+  if (isProduction) {
+    throw new EmbeddingProviderError(
+      "Production embedding provider is not configured. OPENAI_API_KEY environment variable is required on Render for semantic evidence retrieval and vector indexing."
+    );
+  }
+
   throw new EmbeddingProviderError(
     "No valid embedding provider configured. Please set EMBEDDING_PROVIDER=openai and OPENAI_API_KEY, " +
       "or EMBEDDING_PROVIDER=mock for offline development/testing."
   );
 }
 
+/**
+ * Returns diagnostic metadata regarding current embedding configuration.
+ * Safe to inspect without throwing unhandled exceptions.
+ */
+export function getEmbeddingProviderStatus(): {
+  isConfigured: boolean;
+  provider: string;
+  model: string;
+  dimension: number;
+  isProduction: boolean;
+  error?: string;
+} {
+  const isProduction =
+    process.env.NODE_ENV === "production" ||
+    process.env.NEXT_PUBLIC_APP_ENV === "production";
+
+  try {
+    const provider = getConfiguredEmbeddingProvider();
+    return {
+      isConfigured: true,
+      provider: provider.providerName,
+      model: provider.modelIdentifier,
+      dimension: provider.dimension,
+      isProduction,
+    };
+  } catch (err: unknown) {
+    return {
+      isConfigured: false,
+      provider: (process.env.EMBEDDING_PROVIDER || "unconfigured").trim().toLowerCase(),
+      model: process.env.EMBEDDING_MODEL || "text-embedding-3-small",
+      dimension: PGVECTOR_EMBEDDING_DIMENSION,
+      isProduction,
+      error: err instanceof Error ? err.message : "Provider configuration failed",
+    };
+  }
+}
