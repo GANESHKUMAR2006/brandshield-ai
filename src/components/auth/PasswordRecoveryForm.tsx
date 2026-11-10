@@ -24,13 +24,26 @@ export function PasswordRecoveryForm() {
     e.preventDefault();
     setError(null);
     setSuccessMessage(null);
+
+    const trimmed = email.trim();
+    if (!trimmed) {
+      setError("Please enter your corporate email address.");
+      return;
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(trimmed)) {
+      setError("Please provide a valid corporate email address.");
+      return;
+    }
+
     setIsLoading(true);
 
     try {
       const res = await fetch("/api/auth/forgot-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email.trim() }),
+        body: JSON.stringify({ email: trimmed }),
       });
 
       const data = await res.json();
@@ -60,7 +73,7 @@ export function PasswordRecoveryForm() {
   };
 
   return (
-    <div className="w-full max-w-[480px] flex flex-col items-center relative z-10">
+    <div className="w-full max-w-[460px] flex flex-col items-center relative z-10">
       {/* Central Reset Card */}
       <div className="w-full bg-[#0e1424]/90 backdrop-blur-xl border border-slate-800/90 rounded-2xl p-6 sm:p-8 shadow-2xl text-center">
         {/* Top Reset Icon */}
@@ -117,17 +130,12 @@ export function PasswordRecoveryForm() {
         <form onSubmit={handleSubmit} className="space-y-4 text-left">
           {/* Work Email */}
           <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <label
-                htmlFor="recovery-email"
-                className="text-xs font-medium text-slate-300"
-              >
-                Work Email
-              </label>
-              <span className="text-[11px] text-slate-500 font-mono">
-                Work Email
-              </span>
-            </div>
+            <label
+              htmlFor="recovery-email"
+              className="block text-xs font-medium text-slate-300 mb-1.5"
+            >
+              Work Email
+            </label>
 
             <div className="relative">
               <AtSign className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
@@ -135,18 +143,19 @@ export function PasswordRecoveryForm() {
                 id="recovery-email"
                 type="email"
                 required
+                disabled={isLoading}
                 autoComplete="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="Enter your work email"
-                className="w-full h-11 pl-10 pr-4 bg-[#0a0f1d] border border-slate-700/80 rounded-xl text-xs sm:text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-violet-400 focus:ring-1 focus:ring-violet-400 transition-all shadow-inner"
+                className="w-full h-11 pl-10 pr-4 bg-[#0a0f1d] border border-slate-700/80 rounded-xl text-xs sm:text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-violet-400 focus:ring-1 focus:ring-violet-400 transition-all shadow-inner disabled:opacity-60"
               />
             </div>
           </div>
 
           {/* Security Notice Box */}
           <div className="bg-[#0f1629] border border-slate-800/80 rounded-xl p-3 flex items-start gap-2.5 text-xs text-slate-400">
-            <Info className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
+            <Info className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
             <span className="text-[11px] leading-relaxed">
               Security Notice: Time-limited recovery token will be dispatched to
               your registered address.
@@ -178,7 +187,7 @@ export function PasswordRecoveryForm() {
           <div className="pt-2 text-center">
             <Link
               href="/login"
-              className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-300 hover:text-white transition-colors focus:outline-none"
+              className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-400 hover:text-white transition-colors focus:outline-none"
             >
               <ArrowLeft className="w-3.5 h-3.5" />
               <span>Return to Sign In</span>
