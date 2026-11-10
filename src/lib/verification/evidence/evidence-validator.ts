@@ -69,6 +69,7 @@ export class EvidenceValidator {
       return channels.some((ch: unknown) => {
         if (typeof ch !== "string") return false;
         const chLower = ch.trim().toLowerCase();
+        if (chLower === "all" || chLower === "*") return true;
         return targetLower.includes(chLower) || chLower.includes(targetLower);
       });
     }

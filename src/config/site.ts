@@ -33,6 +33,12 @@ export const NAVIGATION_ITEMS: readonly NavItem[] = [
     description: "Governance overview and claim pipeline metrics",
   },
   {
+    name: "Products",
+    href: "/products",
+    icon: "Package",
+    description: "Commercial formulations, catalog SKUs, and retail prices",
+  },
+  {
     name: "Submissions",
     href: "/submissions",
     icon: "FileCheck",
@@ -58,6 +64,13 @@ export const NAVIGATION_ITEMS: readonly NavItem[] = [
     icon: "ClipboardCheck",
     badge: "3 Pending",
     description: "Human-in-the-loop compliance review queue",
+  },
+  {
+    name: "Onboarding",
+    href: "/onboarding",
+    icon: "Compass",
+    badge: "Setup",
+    description: "Guided organization onboarding and claim governance checklist",
   },
   {
     name: "Audit Logs",

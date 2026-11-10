@@ -15,6 +15,8 @@ import {
   Settings,
   Building2,
   Sparkles,
+  Package,
+  Compass,
 } from "lucide-react";
 import { BrandShieldLogo } from "@/components/ui/Icons";
 import { cn } from "@/lib/utils/cn";
@@ -46,6 +48,10 @@ export function Sidebar({ onNavigate, className }: SidebarProps) {
         return <ClipboardList className={iconClass} />;
       case "History":
         return <History className={iconClass} />;
+      case "Package":
+        return <Package className={iconClass} />;
+      case "Compass":
+        return <Compass className={iconClass} />;
       case "Settings":
         return <Settings className={iconClass} />;
       default:

@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { StatusPill } from "@/components/ui/StatusPill";
@@ -10,8 +9,17 @@ import {
   fetchSourcesData,
   SourcesResponseData,
   LiveSourceDocument,
+  LiveProduct,
+  LivePromotion,
 } from "@/lib/api-client";
 import { DocumentVersionModal } from "@/components/sources/DocumentVersionModal";
+import { UploadEvidenceModal } from "@/components/sources/UploadEvidenceModal";
+import { RegisterProductModal } from "@/components/products/RegisterProductModal";
+import { EditProductModal } from "@/components/products/EditProductModal";
+import { DeleteProductDialog } from "@/components/products/DeleteProductDialog";
+import { CreatePromotionModal } from "@/components/promotions/CreatePromotionModal";
+import { EditPromotionModal } from "@/components/promotions/EditPromotionModal";
+import { DeletePromotionDialog } from "@/components/promotions/DeletePromotionDialog";
 import { formatDate } from "@/lib/utils/formatters";
 import {
   FolderGit2,
@@ -22,6 +30,12 @@ import {
   Layers,
   ArrowRight,
   ExternalLink,
+  Edit3,
+  Trash2,
+  Plus,
+  PackagePlus,
+  Tag,
+  UploadCloud,
 } from "lucide-react";
 
 type TabKey = "documents" | "facts" | "products" | "promotions";
@@ -33,6 +47,16 @@ export default function SourcesPage() {
   const [activeTab, setActiveTab] = useState<TabKey>("documents");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedDoc, setSelectedDoc] = useState<LiveSourceDocument | null>(null);
+
+  // Modals state
+  const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+  const [isRegisterProductOpen, setIsRegisterProductOpen] = useState(false);
+  const [editingProduct, setEditingProduct] = useState<LiveProduct | null>(null);
+  const [deletingProduct, setDeletingProduct] = useState<LiveProduct | null>(null);
+
+  const [isCreatePromoOpen, setIsCreatePromoOpen] = useState(false);
+  const [editingPromo, setEditingPromo] = useState<LivePromotion | null>(null);
+  const [deletingPromo, setDeletingPromo] = useState<LivePromotion | null>(null);
 
   const loadSources = React.useCallback(async () => {
     setIsLoading(true);
@@ -123,7 +147,13 @@ export default function SourcesPage() {
             <RefreshCw className="w-3.5 h-3.5 mr-1" />
             Refresh Evidence
           </Button>
-          <Button variant="primary" size="sm">
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={() => setIsUploadModalOpen(true)}
+            className="cursor-pointer"
+          >
+            <UploadCloud className="w-3.5 h-3.5 mr-1" />
             + Upload Evidence Dossier
           </Button>
         </div>
@@ -152,7 +182,7 @@ export default function SourcesPage() {
           <div className="text-2xl sm:text-3xl font-extrabold text-violet-300 mt-1.5 tracking-tight">
             {isLoading ? "..." : data?.products.length ?? 0}
           </div>
-          <div className="text-[11px] text-slate-400 mt-1">DermaGlow formulations</div>
+          <div className="text-[11px] text-slate-400 mt-1">Commercial formulations</div>
         </div>
 
         <div className="p-4 rounded-xl border border-slate-800/80 bg-slate-900/60 backdrop-blur-md shadow-lg">
@@ -249,19 +279,36 @@ export default function SourcesPage() {
         <div className="rounded-xl border border-slate-800/80 bg-slate-900/60 backdrop-blur-md shadow-xl overflow-hidden">
           <div className="p-5 border-b border-slate-800/80 flex flex-row items-center justify-between">
             <div>
-              <h2 className="text-base font-bold text-white tracking-tight">Clinical Dossiers & Substantiation Studies</h2>
+              <h2 className="text-base font-bold text-white tracking-tight">Verified Source Documents</h2>
               <p className="text-xs text-slate-400 mt-0.5">
-                Live versioned scientific evidence and regulatory dossier repository.
+                Scientific papers, clinical trial results, and regulatory standards indexed for ground-truth verification.
               </p>
             </div>
-            <span className="text-[11px] font-semibold text-violet-300 bg-violet-950/60 border border-violet-800/60 px-2.5 py-0.5 rounded-full">
-              {filteredDocs.length} Document(s)
-            </span>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => setIsUploadModalOpen(true)}
+                className="cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5 mr-1" />
+                Upload Dossier
+              </Button>
+              <span className="text-[11px] font-semibold text-violet-300 bg-violet-950/60 border border-violet-800/60 px-2.5 py-0.5 rounded-full">
+                {filteredDocs.length} Document(s)
+              </span>
+            </div>
           </div>
           <div className="p-0">
             {filteredDocs.length === 0 ? (
               <div className="p-8 text-center text-xs text-slate-400">
+                <FileText className="w-8 h-8 text-slate-600 mx-auto mb-2" />
                 No source documents matching &ldquo;{searchQuery}&rdquo;.
+                <div className="mt-3">
+                  <Button variant="primary" size="sm" onClick={() => setIsUploadModalOpen(true)}>
+                    + Upload First Evidence Dossier
+                  </Button>
+                </div>
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -270,9 +317,9 @@ export default function SourcesPage() {
                     <tr className="border-b border-slate-800 bg-slate-950/50 text-slate-400 uppercase font-semibold text-[10px] tracking-wider">
                       <th className="py-3 px-4 sm:px-6">Document Title</th>
                       <th className="py-3 px-4">Type</th>
-                      <th className="py-3 px-4">Approved Version</th>
-                      <th className="py-3 px-4">Approval Date</th>
-                      <th className="py-3 px-4">Validity Period</th>
+                      <th className="py-3 px-4">Status</th>
+                      <th className="py-3 px-4">Active Version</th>
+                      <th className="py-3 px-4">Validity</th>
                       <th className="py-3 px-4 sm:px-6 text-right">Actions</th>
                     </tr>
                   </thead>
@@ -280,52 +327,39 @@ export default function SourcesPage() {
                     {filteredDocs.map((doc) => (
                       <tr key={doc.id} className="hover:bg-slate-800/40 transition-colors">
                         <td className="py-3.5 px-4 sm:px-6">
-                          <div className="flex items-center gap-2.5">
-                            <div className="p-2 bg-violet-950/80 border border-violet-800/60 text-violet-400 rounded-lg shrink-0">
-                              <FolderGit2 className="w-4 h-4" />
+                          <div className="font-semibold text-white">{doc.title}</div>
+                          {doc.description && (
+                            <div className="text-[11px] text-slate-400 mt-0.5 line-clamp-1">
+                              {doc.description}
                             </div>
-                            <div className="min-w-0">
-                              <div className="font-semibold text-white line-clamp-1">
-                                {doc.title}
-                              </div>
-                              <div className="text-[11px] text-slate-400 mt-0.5 flex items-center gap-2">
-                                <span>ID: {doc.id.substring(0, 8)}...</span>
-                                <span className="text-emerald-300 font-medium bg-emerald-950/60 border border-emerald-800/60 px-1.5 rounded text-[10px]">
-                                  Seeded Ground Truth
-                                </span>
-                              </div>
-                            </div>
-                          </div>
+                          )}
                         </td>
                         <td className="py-3.5 px-4">
-                          <span className="capitalize px-2 py-0.5 rounded-md bg-slate-800/80 border border-slate-700/60 text-slate-300 font-medium text-[11px]">
-                            {doc.document_type.replace(/_/g, " ")}
+                          <span className="px-2 py-0.5 bg-slate-800/80 border border-slate-700/60 rounded text-[11px] font-medium text-slate-300">
+                            {doc.document_type}
                           </span>
                         </td>
                         <td className="py-3.5 px-4">
-                          <div className="flex items-center gap-1.5">
-                            <span className="font-semibold text-white">
-                              v{doc.current_version_number ?? 1}
-                            </span>
-                            <Badge variant={doc.is_expired ? "warning" : "success"} size="sm">
-                              {doc.is_expired ? "Expired" : "Approved"}
-                            </Badge>
-                          </div>
+                          <StatusPill status={doc.approval_status} />
                         </td>
-                        <td className="py-3.5 px-4 text-slate-400">
-                          {doc.approval_date ? formatDate(doc.approval_date) : "Pending"}
+                        <td className="py-3.5 px-4">
+                          <span className="font-mono text-cyan-300 font-medium">
+                            v{doc.current_version_number ?? 1}.0
+                          </span>
                         </td>
-                        <td className="py-3.5 px-4 text-slate-400">
-                          {doc.valid_from ? formatDate(doc.valid_from) : "—"} to{" "}
+                        <td className="py-3.5 px-4 text-slate-400 whitespace-nowrap">
+                          {doc.valid_from ? formatDate(doc.valid_from) : "Active"} —{" "}
                           {doc.valid_until ? formatDate(doc.valid_until) : "Indefinite"}
                         </td>
                         <td className="py-3.5 px-4 sm:px-6 text-right">
                           <Button
-                            variant="outline"
+                            variant="ghost"
                             size="sm"
                             onClick={() => setSelectedDoc(doc)}
+                            className="text-violet-400 hover:text-violet-300 hover:bg-violet-950/50"
                           >
-                            Inspect Versions
+                            <Layers className="w-3.5 h-3.5 mr-1" />
+                            Versions
                           </Button>
                         </td>
                       </tr>
@@ -343,13 +377,13 @@ export default function SourcesPage() {
         <div className="rounded-xl border border-slate-800/80 bg-slate-900/60 backdrop-blur-md shadow-xl overflow-hidden">
           <div className="p-5 border-b border-slate-800/80 flex flex-row items-center justify-between">
             <div>
-              <h2 className="text-base font-bold text-white tracking-tight">Registered Approved Product Facts</h2>
+              <h2 className="text-base font-bold text-white tracking-tight">Approved Ground Truth Facts</h2>
               <p className="text-xs text-slate-400 mt-0.5">
-                Ground-truth formulation parameters, safety profiles, and pricing catalogue.
+                Atomic ground-truth specifications linked to clinical dossiers and validated product formulations.
               </p>
             </div>
-            <span className="text-[11px] font-semibold text-violet-300 bg-violet-950/60 border border-violet-800/60 px-2.5 py-0.5 rounded-full">
-              {filteredFacts.length} Fact(s)
+            <span className="text-[11px] font-semibold text-emerald-300 bg-emerald-950/60 border border-emerald-800/60 px-2.5 py-0.5 rounded-full">
+              {filteredFacts.length} Ground Truth Facts
             </span>
           </div>
           <div className="p-0">
@@ -362,21 +396,21 @@ export default function SourcesPage() {
                 <table className="w-full text-left text-xs border-collapse">
                   <thead>
                     <tr className="border-b border-slate-800 bg-slate-950/50 text-slate-400 uppercase font-semibold text-[10px] tracking-wider">
-                      <th className="py-3 px-4 sm:px-6">Fact Key</th>
+                      <th className="py-3 px-4 sm:px-6">Fact Key & Type</th>
                       <th className="py-3 px-4">Associated Product</th>
-                      <th className="py-3 px-4">Approved Fact Value</th>
+                      <th className="py-3 px-4">Verified Fact Value</th>
                       <th className="py-3 px-4">Status</th>
-                      <th className="py-3 px-4">Validity Window</th>
-                      <th className="py-3 px-4 sm:px-6">Source Dossier</th>
+                      <th className="py-3 px-4">Validity</th>
+                      <th className="py-3 px-4 sm:px-6">Substantiating Source</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/60 text-slate-200">
                     {filteredFacts.map((fact) => (
                       <tr key={fact.id} className="hover:bg-slate-800/40 transition-colors">
-                        <td className="py-3.5 px-4 sm:px-6 font-mono font-semibold text-violet-300">
-                          {fact.fact_key}
-                          <div className="text-[10px] text-slate-400 font-sans font-normal mt-0.5">
-                            Type: {fact.fact_type}
+                        <td className="py-3.5 px-4 sm:px-6">
+                          <div className="font-semibold text-white font-mono text-xs">{fact.fact_key}</div>
+                          <div className="text-[10px] text-slate-400 uppercase tracking-wider mt-0.5">
+                            {fact.fact_type}
                           </div>
                         </td>
                         <td className="py-3.5 px-4">
@@ -421,19 +455,35 @@ export default function SourcesPage() {
         <div className="rounded-xl border border-slate-800/80 bg-slate-900/60 backdrop-blur-md shadow-xl overflow-hidden">
           <div className="p-5 border-b border-slate-800/80 flex flex-row items-center justify-between">
             <div>
-              <h2 className="text-base font-bold text-white tracking-tight">DermaGlow Product Catalogue</h2>
+              <h2 className="text-base font-bold text-white tracking-tight">Commercial Product Catalogue</h2>
               <p className="text-xs text-slate-400 mt-0.5">
                 Registered commercial products, reference retail prices, and regulatory statuses.
               </p>
             </div>
-            <span className="text-[11px] font-semibold text-violet-300 bg-violet-950/60 border border-violet-800/60 px-2.5 py-0.5 rounded-full">
-              {filteredProducts.length} Product(s)
-            </span>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => setIsRegisterProductOpen(true)}
+                className="cursor-pointer"
+              >
+                <PackagePlus className="w-3.5 h-3.5 mr-1" />
+                Register Product
+              </Button>
+              <span className="text-[11px] font-semibold text-violet-300 bg-violet-950/60 border border-violet-800/60 px-2.5 py-0.5 rounded-full">
+                {filteredProducts.length} Product(s)
+              </span>
+            </div>
           </div>
           <div className="p-0">
             {filteredProducts.length === 0 ? (
               <div className="p-8 text-center text-xs text-slate-400">
-                No products matching &ldquo;{searchQuery}&rdquo;.
+                No products found. Register your first product formulation above.
+                <div className="mt-3">
+                  <Button variant="primary" size="sm" onClick={() => setIsRegisterProductOpen(true)}>
+                    + Register Product
+                  </Button>
+                </div>
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -445,7 +495,8 @@ export default function SourcesPage() {
                       <th className="py-3 px-4">Category</th>
                       <th className="py-3 px-4">Reference Price</th>
                       <th className="py-3 px-4">Status</th>
-                      <th className="py-3 px-4 sm:px-6">Registered On</th>
+                      <th className="py-3 px-4">Registered On</th>
+                      <th className="py-3 px-4 sm:px-6 text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/60 text-slate-200">
@@ -471,8 +522,28 @@ export default function SourcesPage() {
                         <td className="py-3.5 px-4">
                           <StatusPill status={p.status} />
                         </td>
-                        <td className="py-3.5 px-4 sm:px-6 text-slate-400">
+                        <td className="py-3.5 px-4 text-slate-400">
                           {formatDate(p.created_at)}
+                        </td>
+                        <td className="py-3.5 px-4 sm:px-6 text-right">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => setEditingProduct(p)}
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800/80 transition-colors"
+                              title="Edit product"
+                            >
+                              <Edit3 className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setDeletingProduct(p)}
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-950/40 transition-colors"
+                              title="Delete product"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -489,19 +560,40 @@ export default function SourcesPage() {
         <div className="rounded-xl border border-slate-800/80 bg-slate-900/60 backdrop-blur-md shadow-xl overflow-hidden">
           <div className="p-5 border-b border-slate-800/80 flex flex-row items-center justify-between">
             <div>
-              <h2 className="text-base font-bold text-white tracking-tight">Active Pricing Promotions & Discount Exceptions</h2>
+              <h2 className="text-base font-bold text-white tracking-tight">Pricing Promotions & Discount Exceptions</h2>
               <p className="text-xs text-slate-400 mt-0.5">
                 Promotional pricing rules consulted by claim verification before flagging pricing discrepancies.
               </p>
             </div>
-            <span className="text-[11px] font-semibold text-violet-300 bg-violet-950/60 border border-violet-800/60 px-2.5 py-0.5 rounded-full">
-              {filteredPromotions.length} Promotion(s)
-            </span>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => setIsCreatePromoOpen(true)}
+                className="bg-amber-600 hover:bg-amber-500 text-white cursor-pointer"
+              >
+                <Tag className="w-3.5 h-3.5 mr-1" />
+                Create Promotion
+              </Button>
+              <span className="text-[11px] font-semibold text-amber-300 bg-amber-950/60 border border-amber-800/60 px-2.5 py-0.5 rounded-full">
+                {filteredPromotions.length} Promotion(s)
+              </span>
+            </div>
           </div>
           <div className="p-0">
             {filteredPromotions.length === 0 ? (
               <div className="p-8 text-center text-xs text-slate-400">
-                No promotions matching &ldquo;{searchQuery}&rdquo;.
+                No active promotional rules configured for this workspace.
+                <div className="mt-3">
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={() => setIsCreatePromoOpen(true)}
+                    className="bg-amber-600 hover:bg-amber-500 text-white"
+                  >
+                    + Create Promotion
+                  </Button>
+                </div>
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -513,7 +605,8 @@ export default function SourcesPage() {
                       <th className="py-3 px-4">Resulting Price</th>
                       <th className="py-3 px-4">Active Status</th>
                       <th className="py-3 px-4">Validity Window</th>
-                      <th className="py-3 px-4 sm:px-6">Applicable Channels</th>
+                      <th className="py-3 px-4">Applicable Channels</th>
+                      <th className="py-3 px-4 sm:px-6 text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/60 text-slate-200">
@@ -547,12 +640,32 @@ export default function SourcesPage() {
                         <td className="py-3.5 px-4 text-slate-400 whitespace-nowrap">
                           {formatDate(promo.start_date)} — {formatDate(promo.end_date)}
                         </td>
-                        <td className="py-3.5 px-4 sm:px-6 text-slate-400">
+                        <td className="py-3.5 px-4 text-slate-400">
                           <span className="px-2 py-0.5 bg-slate-800/80 border border-slate-700/60 rounded text-[11px] font-medium text-slate-300">
                             {Array.isArray(promo.applicable_channels)
                               ? promo.applicable_channels.join(", ")
                               : String(promo.applicable_channels)}
                           </span>
+                        </td>
+                        <td className="py-3.5 px-4 sm:px-6 text-right">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => setEditingPromo(promo)}
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800/80 transition-colors"
+                              title="Edit promotion"
+                            >
+                              <Edit3 className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setDeletingPromo(promo)}
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-950/40 transition-colors"
+                              title="Delete promotion"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -564,11 +677,67 @@ export default function SourcesPage() {
         </div>
       )}
 
+      {/* MODALS */}
+
       {/* Document Version Inspection Modal */}
       <DocumentVersionModal
         sourceDoc={selectedDoc}
         versions={data?.documentVersions ?? []}
         onClose={() => setSelectedDoc(null)}
+      />
+
+      {/* Upload Evidence Dossier Modal */}
+      <UploadEvidenceModal
+        isOpen={isUploadModalOpen}
+        onClose={() => setIsUploadModalOpen(false)}
+        onSuccess={loadSources}
+      />
+
+      {/* Register Product Modal */}
+      <RegisterProductModal
+        isOpen={isRegisterProductOpen}
+        onClose={() => setIsRegisterProductOpen(false)}
+        onSuccess={() => loadSources()}
+      />
+
+      {/* Edit Product Modal */}
+      <EditProductModal
+        product={editingProduct}
+        isOpen={!!editingProduct}
+        onClose={() => setEditingProduct(null)}
+        onSuccess={() => loadSources()}
+      />
+
+      {/* Delete Product Dialog */}
+      <DeleteProductDialog
+        product={deletingProduct}
+        isOpen={!!deletingProduct}
+        onClose={() => setDeletingProduct(null)}
+        onSuccess={() => loadSources()}
+      />
+
+      {/* Create Promotion Modal */}
+      <CreatePromotionModal
+        isOpen={isCreatePromoOpen}
+        onClose={() => setIsCreatePromoOpen(false)}
+        onSuccess={() => loadSources()}
+        products={data?.products ?? []}
+      />
+
+      {/* Edit Promotion Modal */}
+      <EditPromotionModal
+        promotion={editingPromo}
+        isOpen={!!editingPromo}
+        onClose={() => setEditingPromo(null)}
+        onSuccess={() => loadSources()}
+      />
+
+      {/* Delete Promotion Dialog */}
+      <DeletePromotionDialog
+        promotion={deletingPromo}
+        isOpen={!!deletingPromo}
+        onClose={() => setDeletingPromo(null)}
+        onSuccess={() => loadSources()}
       />
     </AppLayout>
   );

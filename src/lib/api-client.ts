@@ -1058,3 +1058,231 @@ export async function fetchSourceDocumentContent(sourceId: string): Promise<Sour
   return json.document;
 }
 
+
+
+// --------------------------------------------------------------------------
+// Product Management API Client
+// --------------------------------------------------------------------------
+
+export interface CreateProductInput {
+  name: string;
+  sku: string;
+  category: string;
+  reference_price: number;
+  currency?: string;
+  description?: string | null;
+  status?: "active" | "draft" | "archived";
+}
+
+export interface UpdateProductInput {
+  name?: string;
+  category?: string;
+  reference_price?: number;
+  currency?: string;
+  description?: string | null;
+  status?: "active" | "draft" | "archived";
+}
+
+export async function fetchProducts(): Promise<LiveProduct[]> {
+  const res = await fetch("/api/products", { cache: "no-store" });
+  if (!res.ok) {
+    const json = await res.json().catch(() => ({}));
+    throw new Error(json.error || "Failed to load products");
+  }
+  const json = await res.json();
+  return json.data;
+}
+
+export async function createProduct(input: CreateProductInput): Promise<LiveProduct> {
+  const res = await fetch("/api/products", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || !json.success) {
+    throw new Error(json.error || (json.details ? json.details.join(", ") : "Failed to create product"));
+  }
+  return json.data;
+}
+
+export async function updateProduct(id: string, input: UpdateProductInput): Promise<LiveProduct> {
+  const res = await fetch(`/api/products/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || !json.success) {
+    throw new Error(json.error || (json.details ? json.details.join(", ") : "Failed to update product"));
+  }
+  return json.data;
+}
+
+export async function deleteProduct(id: string): Promise<void> {
+  const res = await fetch(`/api/products/${id}`, {
+    method: "DELETE",
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || !json.success) {
+    throw new Error(json.error || "Failed to delete product");
+  }
+}
+
+
+// --------------------------------------------------------------------------
+// Promotion Management API Client
+// --------------------------------------------------------------------------
+
+export interface CreatePromotionInput {
+  productId: string;
+  promotionName: string;
+  discountType: "fixed" | "percentage" | "bundle";
+  discountValue: number;
+  resultingPrice: number;
+  currency?: string;
+  startDate: string;
+  endDate: string;
+  applicableChannels?: string[];
+  terms?: string | null;
+  status?: "active" | "expired" | "scheduled" | "cancelled";
+}
+
+export interface UpdatePromotionInput {
+  promotionName?: string;
+  discountType?: "fixed" | "percentage" | "bundle";
+  discountValue?: number;
+  resultingPrice?: number;
+  currency?: string;
+  startDate?: string;
+  endDate?: string;
+  applicableChannels?: string[];
+  terms?: string | null;
+  status?: "active" | "expired" | "scheduled" | "cancelled";
+}
+
+export async function fetchPromotions(): Promise<LivePromotion[]> {
+  const res = await fetch("/api/promotions", { cache: "no-store" });
+  if (!res.ok) {
+    const json = await res.json().catch(() => ({}));
+    throw new Error(json.error || "Failed to load promotions");
+  }
+  const json = await res.json();
+  return json.data;
+}
+
+export async function createPromotion(input: CreatePromotionInput): Promise<LivePromotion> {
+  const res = await fetch("/api/promotions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || !json.success) {
+    throw new Error(json.error || (json.details ? json.details.join(", ") : "Failed to create promotion"));
+  }
+  return json.data;
+}
+
+export async function updatePromotion(id: string, input: UpdatePromotionInput): Promise<LivePromotion> {
+  const res = await fetch(`/api/promotions/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || !json.success) {
+    throw new Error(json.error || (json.details ? json.details.join(", ") : "Failed to update promotion"));
+  }
+  return json.data;
+}
+
+export async function deletePromotion(id: string): Promise<void> {
+  const res = await fetch(`/api/promotions/${id}`, {
+    method: "DELETE",
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || !json.success) {
+    throw new Error(json.error || "Failed to delete promotion");
+  }
+}
+
+// --------------------------------------------------------------------------
+// Evidence Ingestion API Client
+// --------------------------------------------------------------------------
+
+export interface IngestEvidenceInput {
+  title: string;
+  documentType: string;
+  content: string;
+  format?: string;
+  filename?: string;
+  description?: string;
+  sourceDocumentId?: string;
+}
+
+export interface IngestEvidenceResponse {
+  success: boolean;
+  title: string;
+  format: string;
+  totalCharacters: number;
+  sectionsCount: number;
+  chunksGenerated: number;
+  chunksPersisted: number;
+  embeddingModel: string;
+  documentId?: string;
+}
+
+export async function ingestEvidenceDocument(input: IngestEvidenceInput): Promise<IngestEvidenceResponse> {
+  const res = await fetch("/api/sources/ingest", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || json.error) {
+    throw new Error(json.error || "Failed to ingest evidence document");
+  }
+  return json;
+}
+
+
+// --------------------------------------------------------------------------
+// Onboarding Status API Client
+// --------------------------------------------------------------------------
+
+export interface OnboardingStep {
+  step: number;
+  id: string;
+  title: string;
+  description: string;
+  completed: boolean;
+  count: number;
+  meta?: Record<string, unknown>;
+}
+
+export interface OnboardingStatusResponse {
+  success: boolean;
+  workspace: {
+    id: string;
+    name: string;
+    slug: string;
+    role: string;
+  };
+  progress: {
+    completedCount: number;
+    totalSteps: number;
+    percentage: number;
+    isFullyOnboarded: boolean;
+  };
+  steps: OnboardingStep[];
+}
+
+export async function fetchOnboardingStatus(): Promise<OnboardingStatusResponse> {
+  const res = await fetch("/api/onboarding/status", { cache: "no-store" });
+  if (!res.ok) {
+    const json = await res.json().catch(() => ({}));
+    throw new Error(json.error || "Failed to load onboarding status");
+  }
+  return res.json();
+}

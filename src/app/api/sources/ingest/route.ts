@@ -45,6 +45,7 @@ export async function POST(request: NextRequest) {
       content?: string;
       format?: string;
       filename?: string;
+      description?: string;
       sourceDocumentId?: string;
     };
 
@@ -54,7 +55,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Invalid JSON request body." }, { status: 400 });
     }
 
-    const { title, documentType, content, format, filename, sourceDocumentId } = body;
+    const { title, documentType, content, format, filename, description, sourceDocumentId } = body;
 
     if (!title || !content) {
       return NextResponse.json(
@@ -128,22 +129,27 @@ export async function POST(request: NextRequest) {
       chunks[i].embedding = embeddings[i];
     }
 
-    // 7. If sourceDocumentId is provided, persist chunks in PostgreSQL transaction with tenant isolation
+    // 7. Persist chunks in PostgreSQL transaction with tenant isolation
     let persistedCount = 0;
-    if (sourceDocumentId) {
-      await withTransaction(async (client) => {
+    let effectiveDocumentId = sourceDocumentId;
+    let effectiveVersionId: string | null = null;
+
+    await withTransaction(async (client) => {
+      let docVerId: string;
+
+      if (effectiveDocumentId) {
         // Enforce tenant boundary: source document must belong to the authenticated session workspace
         const docRes = await client.query<{ id: string; workspace_id: string }>(
           `SELECT sd.id, sd.workspace_id 
            FROM source_documents sd
            JOIN workspaces w ON sd.workspace_id = w.id
            WHERE sd.id = $1 AND w.slug = $2`,
-          [sourceDocumentId, session.workspaceSlug]
+          [effectiveDocumentId, session.workspaceSlug]
         );
 
         if (docRes.rows.length === 0) {
           throw new WorkspaceAccessError(
-            `Source document "${sourceDocumentId}" not found or unauthorized in workspace "${session.workspaceSlug}".`
+            `Source document "${effectiveDocumentId}" not found or unauthorized in workspace "${session.workspaceSlug}".`
           );
         }
 
@@ -152,69 +158,109 @@ export async function POST(request: NextRequest) {
           `SELECT id, version_number FROM document_versions 
            WHERE source_document_id = $1 
            ORDER BY version_number DESC LIMIT 1`,
-          [sourceDocumentId]
+          [effectiveDocumentId]
         );
 
         if (verRes.rows.length === 0) {
           throw new Error(
-            `Source document "${sourceDocumentId}" has no active document version to attach chunks.`
+            `Source document "${effectiveDocumentId}" has no active document version to attach chunks.`
           );
         }
 
-        const docVer = verRes.rows[0];
-
-        for (const chunk of chunks) {
-          const vectorString = `[${chunk.embedding!.join(",")}]`;
-          await client.query(
-            `INSERT INTO document_chunks (
-              document_version_id,
-              chunk_index,
-              content,
-              embedding,
-              metadata
-            ) VALUES ($1, $2, $3, $4::vector, $5)
-            ON CONFLICT (document_version_id, chunk_index) 
-            DO UPDATE SET content = EXCLUDED.content, embedding = EXCLUDED.embedding, metadata = EXCLUDED.metadata`,
-            [
-              docVer.id,
-              chunk.chunkIndex,
-              chunk.content,
-              vectorString,
-              JSON.stringify(chunk.metadata),
-            ]
-          );
-          persistedCount++;
+        docVerId = verRes.rows[0].id;
+      } else {
+        // Auto-create source document and initial document version for new upload
+        const wsRes = await client.query<{ id: string }>(
+          `SELECT id FROM workspaces WHERE slug = $1 LIMIT 1`,
+          [session.workspaceSlug]
+        );
+        if (wsRes.rows.length === 0) {
+          throw new WorkspaceAccessError(`Workspace "${session.workspaceSlug}" not found.`);
         }
+        const workspaceId = wsRes.rows[0].id;
 
-        // Prevent phantom success
-        if (persistedCount === 0) {
-          throw new Error("Failed to persist document chunks: Zero chunks recorded.");
-        }
+        const crypto = await import("crypto");
+        const contentHash = crypto.createHash("sha256").update(content).digest("hex");
+        const storagePath = `documents/${workspaceId}/${Date.now()}_${(filename || title || "document").replace(/[^a-zA-Z0-9._-]/g, "_")}`;
 
-        // Append audit event
+        const docInsert = await client.query<{ id: string }>(
+          `INSERT INTO source_documents (workspace_id, title, document_type, description, approval_status)
+           VALUES ($1, $2, $3, $4, 'approved')
+           RETURNING id`,
+          [workspaceId, title, documentType || "clinical_dossier", description || null]
+        );
+        effectiveDocumentId = docInsert.rows[0].id;
+
+        const verInsert = await client.query<{ id: string }>(
+          `INSERT INTO document_versions (
+             source_document_id, version_number, storage_path, content_hash, approval_status, approval_date, valid_from
+           ) VALUES ($1, 1, $2, $3, 'approved', now(), now())
+           RETURNING id`,
+          [effectiveDocumentId, storagePath, contentHash]
+        );
+        docVerId = verInsert.rows[0].id;
+
         await client.query(
-          `INSERT INTO audit_events (
-            workspace_id, actor_id, entity_type, entity_id, action, after_state
-          ) VALUES (
-            (SELECT workspace_id FROM source_documents WHERE id = $1),
-            $2, 'document', $1, 'document_chunks_ingested', $3
-          )`,
+          `UPDATE source_documents SET current_version_id = $1 WHERE id = $2`,
+          [docVerId, effectiveDocumentId]
+        );
+      }
+
+      effectiveVersionId = docVerId;
+
+      for (const chunk of chunks) {
+        const vectorString = `[${chunk.embedding!.join(",")}]`;
+        await client.query(
+          `INSERT INTO document_chunks (
+            document_version_id,
+            chunk_index,
+            content,
+            embedding,
+            metadata
+          ) VALUES ($1, $2, $3, $4::vector, $5)
+          ON CONFLICT (document_version_id, chunk_index) 
+          DO UPDATE SET content = EXCLUDED.content, embedding = EXCLUDED.embedding, metadata = EXCLUDED.metadata`,
           [
-            sourceDocumentId,
-            session.userName,
-            JSON.stringify({
-              version_id: docVer.id,
-              chunks_count: persistedCount,
-              provider: embeddingProvider.providerName,
-              model: embeddingProvider.modelIdentifier,
-            }),
+            docVerId,
+            chunk.chunkIndex,
+            chunk.content,
+            vectorString,
+            JSON.stringify(chunk.metadata),
           ]
         );
-      });
-    }
+        persistedCount++;
+      }
+
+      // Prevent phantom success
+      if (persistedCount === 0) {
+        throw new Error("Failed to persist document chunks: Zero chunks recorded.");
+      }
+
+      // Append audit event
+      await client.query(
+        `INSERT INTO audit_events (
+          workspace_id, actor_id, entity_type, entity_id, action, after_state
+        ) VALUES (
+          (SELECT workspace_id FROM source_documents WHERE id = $1),
+          $2, 'document', $1, 'document_chunks_ingested', $3
+        )`,
+        [
+          effectiveDocumentId,
+          session.userName,
+          JSON.stringify({
+            version_id: docVerId,
+            chunks_count: persistedCount,
+            provider: embeddingProvider.providerName,
+            model: embeddingProvider.modelIdentifier,
+          }),
+        ]
+      );
+    });
 
     return NextResponse.json({
       success: true,
+      documentId: effectiveDocumentId,
+      versionId: effectiveVersionId,
       title: parsed.title,
       format: parsed.format,
       totalCharacters: parsed.totalCharacters,
