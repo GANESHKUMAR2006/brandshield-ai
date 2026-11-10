@@ -64,9 +64,37 @@ export function validateUserWorkspaceMembership(
  * 2. Development/Demo Mode: Isolated fallback to CURRENT_USER strictly when
  *    NODE_ENV !== "production" and NEXT_PUBLIC_APP_ENV !== "production".
  */
+let testSessionOverride: ServerSessionIdentity | Error | null | undefined = undefined;
+
+/**
+ * Test-only utility to set a mock session for unit and integration testing.
+ * Strictly blocked in production environments.
+ */
+export function __setTestSessionOverride(session: ServerSessionIdentity | Error | null | undefined): void {
+  if (
+    process.env.NODE_ENV === "production" ||
+    process.env.NEXT_PUBLIC_APP_ENV === "production"
+  ) {
+    throw new Error("Test session override is strictly prohibited in production.");
+  }
+  testSessionOverride = session;
+}
+
 export async function resolveServerSession(
   targetWorkspaceSlug: string = DERMAGLOW_WORKSPACE_SLUG
 ): Promise<ServerSessionIdentity> {
+  if (testSessionOverride !== undefined) {
+    if (testSessionOverride === null) {
+      throw new AuthenticationRequiredError(
+        "Authentication required: A valid authenticated session must be established."
+      );
+    }
+    if (testSessionOverride instanceof Error) {
+      throw testSessionOverride;
+    }
+    return testSessionOverride;
+  }
+
   const isProduction =
     process.env.NODE_ENV === "production" ||
     process.env.NEXT_PUBLIC_APP_ENV === "production";
@@ -237,6 +265,11 @@ export function canCreateSubmissions(target: ServerSessionIdentity | ReviewerRol
 export function canEditSubmissions(target: ServerSessionIdentity | ReviewerRole): boolean {
   const role = resolveRole(target);
   return role === "admin" || role === "compliance_reviewer" || role === "creator";
+}
+
+export function canForceReextract(target: ServerSessionIdentity | ReviewerRole): boolean {
+  const role = resolveRole(target);
+  return role === "admin" || role === "compliance_reviewer";
 }
 
 export function canReviewClaims(target: ServerSessionIdentity | ReviewerRole): boolean {

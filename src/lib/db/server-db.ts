@@ -1,6 +1,23 @@
 import { Pool, PoolClient, QueryResult, QueryResultRow } from "pg";
 
 let pool: Pool | null = null;
+let testQueryOverride: ((text: string, params?: unknown[]) => Promise<any>) | null = null;
+
+/**
+ * Test-only hook to inject mock database responses during automated unit tests.
+ * Strictly blocked in production environments.
+ */
+export function __setTestQueryOverride(
+  override: ((text: string, params?: unknown[]) => Promise<any>) | null
+): void {
+  if (
+    process.env.NODE_ENV === "production" ||
+    process.env.NEXT_PUBLIC_APP_ENV === "production"
+  ) {
+    throw new Error("Test query override is strictly prohibited in production.");
+  }
+  testQueryOverride = override;
+}
 
 export function getDbPool(): Pool {
   if (pool) return pool;
@@ -31,6 +48,9 @@ export async function query<T extends QueryResultRow = QueryResultRow>(
   text: string,
   params?: unknown[]
 ): Promise<QueryResult<T>> {
+  if (testQueryOverride) {
+    return testQueryOverride(text, params);
+  }
   const p = getDbPool();
   return p.query<T>(text, params);
 }

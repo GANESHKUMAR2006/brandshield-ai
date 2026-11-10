@@ -18,6 +18,8 @@ export interface ExtractOptions {
   versionId?: string;
   forceReextract?: boolean;
   providerOverride?: LLMProvider;
+  workspaceId?: string;
+  workspaceSlug?: string;
 }
 
 export interface ExtractionExecutionResult {
@@ -66,8 +68,11 @@ export class ExtractionService {
       `SELECT s.id, s.workspace_id, s.title, s.channel, s.product_id, s.status
        FROM submissions s
        JOIN workspaces w ON s.workspace_id = w.id
-       WHERE s.id = $1 AND w.slug = 'dermaglow'`,
-      [submissionId]
+       WHERE s.id = $1 AND (
+         ( ($2::text IS NOT NULL AND w.id::text = $2::text) OR ($3::text IS NOT NULL AND w.slug = $3::text) )
+         OR ($2::text IS NULL AND $3::text IS NULL AND w.slug = 'dermaglow')
+       )`,
+      [submissionId, options?.workspaceId || null, options?.workspaceSlug || null]
     );
 
     if (subRes.rows.length === 0) {

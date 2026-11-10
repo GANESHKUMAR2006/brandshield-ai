@@ -16,7 +16,10 @@ import {
 } from "./types";
 
 export class VerificationContextLoader {
-  public static async loadContextForClaim(claimId: string): Promise<VerificationContext> {
+  public static async loadContextForClaim(
+    claimId: string,
+    workspaceContext?: { workspaceId?: string; workspaceSlug?: string }
+  ): Promise<VerificationContext> {
     // 1. Fetch claim, submission, and submission version
     const claimRes = await query<{
       claim_id: string;
@@ -61,12 +64,15 @@ export class VerificationContextLoader {
       JOIN submissions s ON c.submission_id = s.id
       JOIN submission_versions sv ON c.submission_version_id = sv.id
       JOIN workspaces w ON s.workspace_id = w.id
-      WHERE c.id = $1 AND w.slug = 'dermaglow'`,
-      [claimId]
+      WHERE c.id = $1 AND (
+        ( ($2::text IS NOT NULL AND w.id::text = $2::text) OR ($3::text IS NOT NULL AND w.slug = $3::text) )
+        OR ($2::text IS NULL AND $3::text IS NULL AND w.slug = 'dermaglow')
+      )`,
+      [claimId, workspaceContext?.workspaceId || null, workspaceContext?.workspaceSlug || null]
     );
 
     if (claimRes.rows.length === 0) {
-      throw new Error(`Active claim "${claimId}" not found in DermaGlow workspace.`);
+      throw new Error(`Active claim "${claimId}" not found in authorized workspace.`);
     }
 
     const row = claimRes.rows[0];

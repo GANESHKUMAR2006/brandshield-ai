@@ -61,9 +61,12 @@ export class VerificationEngine {
   /**
    * Deterministically verifies a single active marketing claim.
    */
-  public static async verifyClaim(claimId: string): Promise<VerificationExecutionResult> {
+  public static async verifyClaim(
+    claimId: string,
+    workspaceContext?: { workspaceId?: string; workspaceSlug?: string }
+  ): Promise<VerificationExecutionResult> {
     // 1. Load full context from PostgreSQL
-    const context = await VerificationContextLoader.loadContextForClaim(claimId);
+    const context = await VerificationContextLoader.loadContextForClaim(claimId, workspaceContext);
 
     // 2. Route claim to deterministic rule
     const ruleResult = VerificationRouter.routeClaim(context);
@@ -334,7 +337,8 @@ export class VerificationEngine {
    * Verifies all active extracted claims for a marketing submission.
    */
   public static async verifySubmissionClaims(
-    submissionId: string
+    submissionId: string,
+    workspaceContext?: { workspaceId?: string; workspaceSlug?: string }
   ): Promise<VerificationExecutionResult[]> {
     const { query: dbQuery } = await import("@/lib/db/server-db");
 
@@ -344,13 +348,16 @@ export class VerificationEngine {
        FROM claims c
        JOIN submissions s ON c.submission_id = s.id
        JOIN workspaces w ON s.workspace_id = w.id
-       WHERE c.submission_id = $1 AND c.is_active = true AND w.slug = 'dermaglow'`,
-      [submissionId]
+       WHERE c.submission_id = $1 AND c.is_active = true AND (
+         ( ($2::text IS NOT NULL AND w.id::text = $2::text) OR ($3::text IS NOT NULL AND w.slug = $3::text) )
+         OR ($2::text IS NULL AND $3::text IS NULL AND w.slug = 'dermaglow')
+       )`,
+      [submissionId, workspaceContext?.workspaceId || null, workspaceContext?.workspaceSlug || null]
     );
 
     const results: VerificationExecutionResult[] = [];
     for (const row of claimsRes.rows) {
-      const res = await this.verifyClaim(row.id);
+      const res = await this.verifyClaim(row.id, workspaceContext);
       results.push(res);
     }
 
