@@ -223,6 +223,7 @@ export async function resolveServerSession(
          FROM workspace_memberships wm
          JOIN workspaces w ON wm.workspace_id = w.id
          WHERE wm.user_id = $1 AND (w.slug = $2 OR w.id::text = $2) AND wm.status = 'active'
+           AND (w.status IS NULL OR w.status != 'archived')
          LIMIT 1`,
         [testSessionOverride.userId, requestedSlug]
       );
@@ -268,6 +269,7 @@ export async function resolveServerSession(
              FROM workspace_memberships wm
              JOIN workspaces w ON wm.workspace_id = w.id
              WHERE wm.user_id = $1 AND (w.slug = $2 OR w.id::text = $2) AND wm.status = 'active'
+               AND (w.status IS NULL OR w.status != 'archived')
              LIMIT 1`,
             [user.id, requestedSlug]
           );
@@ -282,6 +284,7 @@ export async function resolveServerSession(
              FROM workspace_memberships wm
              JOIN workspaces w ON wm.workspace_id = w.id
              WHERE wm.user_id = $1 AND wm.status = 'active'
+               AND (w.status IS NULL OR w.status != 'archived')
              ORDER BY wm.created_at ASC
              LIMIT 1`,
             [user.id]
@@ -360,7 +363,7 @@ export async function resolveServerSession(
       let resolvedWorkspaceId: string | null = null;
       try {
         const wsRes = await query<{ id: string }>(
-          `SELECT id FROM workspaces WHERE slug = $1 LIMIT 1`,
+          `SELECT id FROM workspaces WHERE slug = $1 AND (status IS NULL OR status != 'archived') LIMIT 1`,
           [effectiveSlug]
         );
         if (wsRes.rows.length > 0) {

@@ -100,13 +100,16 @@ export async function POST(request: Request) {
     const authorName = session.userName;
 
     const result = await withTransaction(async (client) => {
-      // 1. Resolve workspace ID from authenticated session
-      const wsRes = await client.query(
-        "SELECT id FROM workspaces WHERE slug = $1 LIMIT 1;",
+      // 1. Resolve workspace ID and verify active lifecycle status
+      const wsRes = await client.query<{ id: string; status: string }>(
+        "SELECT id, COALESCE(status, 'active') as status FROM workspaces WHERE slug = $1 LIMIT 1;",
         [session.workspaceSlug]
       );
       if (wsRes.rows.length === 0) {
         throw new Error(`Workspace "${session.workspaceSlug}" not found.`);
+      }
+      if (wsRes.rows[0].status === "archived") {
+        throw new WorkspaceAccessError("Workspace is archived. New submissions are prohibited.");
       }
       const workspaceId = wsRes.rows[0].id;
 

@@ -901,6 +901,22 @@ export async function updateWorkspace(id: string, payload: { name: string }): Pr
   return data.workspace;
 }
 
+export async function archiveWorkspace(
+  id: string,
+  payload: { confirmName: string; reason?: string }
+): Promise<{ success: boolean; message: string; workspace?: WorkspaceItem }> {
+  const res = await fetch(`/api/workspaces/${id}`, {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json();
+  if (!res.ok || !data.success) {
+    throw new Error(data.error || "Failed to archive organization");
+  }
+  return data;
+}
+
 export async function fetchWorkspaceMembers(id: string): Promise<WorkspaceMemberItem[]> {
   const res = await fetch(`/api/workspaces/${id}/members`, { cache: "no-store" });
   const data = await res.json();

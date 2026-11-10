@@ -9,12 +9,15 @@ import { SystemHealthModal } from "@/components/system/SystemHealthModal";
 import { PresenterViewModal } from "@/components/demo/PresenterViewModal";
 import { GuidedDemoModal } from "@/components/demo/GuidedDemoModal";
 import { InviteMemberModal } from "@/components/workspace/InviteMemberModal";
+import { ArchiveOrganizationModal } from "@/components/workspace/ArchiveOrganizationModal";
 import {
   fetchWorkspaceMembers,
   fetchWorkspaceInvitations,
   updateMemberRole,
   removeWorkspaceMember,
   revokeWorkspaceInvitation,
+  fetchWorkspaceDetails,
+  fetchWorkspaces,
   WorkspaceMemberItem,
   WorkspaceInvitationItem,
 } from "@/lib/api-client";
@@ -38,6 +41,8 @@ import {
   RefreshCw,
   Mail,
   X,
+  Archive,
+  Lock,
 } from "lucide-react";
 
 const ROLE_LABELS: Record<ReviewerRole, { label: string; badgeClass: string; desc: string }> = {
@@ -127,9 +132,12 @@ export default function SettingsPage() {
   const [guideModalOpen, setGuideModalOpen] = useState(false);
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
 
-  // Active workspace
+  // Active workspace & Danger Zone lifecycle state
   const [workspaceId, setWorkspaceId] = useState<string>("");
   const [workspaceName, setWorkspaceName] = useState<string>("Workspace");
+  const [workspaceSlug, setWorkspaceSlug] = useState<string>("");
+  const [userRole, setUserRole] = useState<ReviewerRole>("viewer");
+  const [isArchiveModalOpen, setIsArchiveModalOpen] = useState(false);
 
   // Team management state
   const [members, setMembers] = useState<WorkspaceMemberItem[]>(DEFAULT_MEMBERS);
@@ -142,19 +150,26 @@ export default function SettingsPage() {
   const [isRemoving, setIsRemoving] = useState(false);
   const [removeError, setRemoveError] = useState<string | null>(null);
 
-  // Sync workspace from server session / localStorage
+  // Sync workspace and role from server session / localStorage
   useEffect(() => {
     fetch("/api/auth/me")
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
-        if (data?.user?.workspaceId) {
-          setWorkspaceId(data.user.workspaceId);
-          setWorkspaceName(data.user.workspaceSlug ? data.user.workspaceSlug.charAt(0).toUpperCase() + data.user.workspaceSlug.slice(1) : "Workspace");
+        if (data?.user) {
+          if (data.user.workspaceId) setWorkspaceId(data.user.workspaceId);
+          if (data.user.workspaceSlug) {
+            setWorkspaceSlug(data.user.workspaceSlug);
+            setWorkspaceName(data.user.workspaceSlug.charAt(0).toUpperCase() + data.user.workspaceSlug.slice(1));
+          }
+          if (data.user.role) {
+            setUserRole(data.user.role as ReviewerRole);
+          }
         } else if (typeof window !== "undefined") {
           const storedId = localStorage.getItem("active_workspace_id");
           const storedSlug = localStorage.getItem("active_workspace_slug");
           if (storedId) setWorkspaceId(storedId);
           if (storedSlug) {
+            setWorkspaceSlug(storedSlug);
             setWorkspaceName(storedSlug.charAt(0).toUpperCase() + storedSlug.slice(1));
           }
         }
@@ -165,11 +180,24 @@ export default function SettingsPage() {
           const storedSlug = localStorage.getItem("active_workspace_slug");
           if (storedId) setWorkspaceId(storedId);
           if (storedSlug) {
+            setWorkspaceSlug(storedSlug);
             setWorkspaceName(storedSlug.charAt(0).toUpperCase() + storedSlug.slice(1));
           }
         }
       });
   }, []);
+
+  // Fetch full workspace metadata when workspaceId is available
+  useEffect(() => {
+    if (workspaceId) {
+      fetchWorkspaceDetails(workspaceId)
+        .then((ws) => {
+          if (ws?.name) setWorkspaceName(ws.name);
+          if (ws?.slug) setWorkspaceSlug(ws.slug);
+        })
+        .catch(() => {});
+    }
+  }, [workspaceId]);
 
   const loadTeamData = useCallback(async () => {
     if (!workspaceId) return;
@@ -263,6 +291,43 @@ export default function SettingsPage() {
         message: err instanceof Error ? err.message : "Failed to revoke invitation",
       });
       setTimeout(() => setTeamNotification(null), 4000);
+    }
+  };
+
+  const handleWorkspaceArchived = async (archivedWs: { id: string; name: string; slug: string }) => {
+    setTeamNotification({
+      type: "success",
+      message: `Organization "${archivedWs.name}" has been successfully archived. All active memberships have been suspended.`,
+    });
+
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("active_workspace_id");
+      localStorage.removeItem("active_workspace_slug");
+    }
+
+    try {
+      const remainingWorkspaces = await fetchWorkspaces();
+      if (remainingWorkspaces && remainingWorkspaces.length > 0) {
+        const nextWs = remainingWorkspaces[0];
+        if (typeof window !== "undefined") {
+          localStorage.setItem("active_workspace_id", nextWs.id);
+          localStorage.setItem("active_workspace_slug", nextWs.slug);
+        }
+        setWorkspaceId(nextWs.id);
+        setWorkspaceName(nextWs.name);
+        setWorkspaceSlug(nextWs.slug);
+        setTimeout(() => {
+          window.location.reload();
+        }, 1200);
+      } else {
+        setTimeout(() => {
+          window.location.href = "/workspaces";
+        }, 1500);
+      }
+    } catch {
+      setTimeout(() => {
+        window.location.reload();
+      }, 1500);
     }
   };
 
@@ -495,6 +560,89 @@ export default function SettingsPage() {
                 <ArrowRight className="w-3.5 h-3.5" />
               </Link>
             </div>
+          </div>
+
+          {/* Organization Lifecycle — Danger Zone */}
+          <div className="rounded-xl border border-rose-900/60 bg-gradient-to-b from-rose-950/20 via-slate-900/80 to-slate-900/90 backdrop-blur-md p-6 shadow-xl space-y-5">
+            <div className="pb-3 border-b border-rose-900/40 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-rose-950/80 border border-rose-800/60 text-rose-400 rounded-lg">
+                  <AlertTriangle className="w-4 h-4" />
+                </div>
+                <div>
+                  <h2 className="text-base font-bold text-white tracking-tight flex items-center gap-2">
+                    <span>Danger Zone — Organization Lifecycle</span>
+                    <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded-full bg-rose-950/80 text-rose-300 border border-rose-800/60">
+                      Admin Access Only
+                    </span>
+                  </h2>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Lifecycle management and compliance retention for <strong className="text-slate-200">{workspaceName}</strong> ({workspaceSlug || workspaceId || "active workspace"})
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {userRole !== "admin" ? (
+              <div className="p-3.5 rounded-xl border border-slate-800 bg-slate-950/60 flex items-center gap-3 text-xs text-slate-400">
+                <Lock className="w-4 h-4 text-slate-500 shrink-0" />
+                <span>
+                  Organization lifecycle operations are restricted to Workspace Administrators. Your current role is{" "}
+                  <strong className="text-white capitalize">{userRole.replace("_", " ")}</strong>.
+                </span>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {/* Action 1: Archive Organization */}
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-4 rounded-xl border border-rose-900/40 bg-slate-950/70 hover:border-rose-800/60 transition-colors">
+                  <div className="space-y-1">
+                    <div className="font-semibold text-white text-xs flex items-center gap-2">
+                      <Archive className="w-3.5 h-3.5 text-rose-400" />
+                      <span>Archive Organization</span>
+                      <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-amber-950/60 border border-amber-800/50 text-amber-300">
+                        Retention Standard
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-400 max-w-xl">
+                      Transitions <strong className="text-slate-200">{workspaceName}</strong> ({workspaceSlug || "active"}) into read-only retention. Suspends all active team memberships and cancels pending invitations while preserving all clinical evidence, verified claims, and immutable audit logs required for FDA 21 CFR Part 11 and FTC substantiation.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsArchiveModalOpen(true)}
+                    className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-rose-950/80 hover:bg-rose-900 border border-rose-700/60 hover:border-rose-600 text-rose-200 font-semibold text-xs transition-colors shadow-sm shrink-0 cursor-pointer"
+                  >
+                    <Archive className="w-3.5 h-3.5" />
+                    <span>Archive Organization</span>
+                  </button>
+                </div>
+
+                {/* Action 2: Permanent Deletion (Strictly Disabled for Regulatory Compliance) */}
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-4 rounded-xl border border-slate-800/80 bg-slate-950/40 opacity-75">
+                  <div className="space-y-1">
+                    <div className="font-semibold text-slate-300 text-xs flex items-center gap-2">
+                      <Trash2 className="w-3.5 h-3.5 text-slate-500" />
+                      <span>Permanently Delete Organization</span>
+                      <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-slate-800 border border-slate-700 text-slate-400">
+                        Disabled by Policy
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 max-w-xl">
+                      Physical deletion is prohibited under compliance regulations (FDA 21 CFR Part 11, FTC Marketing Substantiation, ISO 22716). Cascade deletion causes spoliation of evidence and destroys required audit histories. Use archival to retire this organization.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    disabled
+                    title="Permanent deletion is prohibited by compliance retention policies"
+                    className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-800/50 border border-slate-700/50 text-slate-500 font-medium text-xs cursor-not-allowed shrink-0"
+                  >
+                    <Lock className="w-3.5 h-3.5" />
+                    <span>Delete Organization</span>
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -887,6 +1035,20 @@ export default function SettingsPage() {
         onClose={() => setInviteModalOpen(false)}
         onInvited={() => loadTeamData()}
       />
+
+      {/* Archive Organization Modal */}
+      {workspaceId && (
+        <ArchiveOrganizationModal
+          isOpen={isArchiveModalOpen}
+          workspace={{
+            id: workspaceId,
+            name: workspaceName,
+            slug: workspaceSlug || workspaceName.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
+          }}
+          onClose={() => setIsArchiveModalOpen(false)}
+          onArchived={handleWorkspaceArchived}
+        />
+      )}
 
       <SystemHealthModal isOpen={healthModalOpen} onClose={() => setHealthModalOpen(false)} />
       <PresenterViewModal isOpen={presenterModalOpen} onClose={() => setPresenterModalOpen(false)} />

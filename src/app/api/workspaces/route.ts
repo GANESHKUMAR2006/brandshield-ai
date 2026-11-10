@@ -37,16 +37,19 @@ export async function GET(request: NextRequest) {
         );
       }
 
+      const includeArchived = request.nextUrl.searchParams.get("includeArchived") === "true";
+
       // Safe demo fallback: Return demo workspace without querying memberships with non-UUID demo string
       const demoWs = await query<{
         id: string;
         name: string;
         slug: string;
+        status?: string;
         created_at: string;
       }>(
-        `SELECT id, name, slug, created_at
+        `SELECT id, name, slug, COALESCE(status, 'active') as status, created_at
          FROM workspaces
-         WHERE slug = $1 LIMIT 1`,
+         WHERE slug = $1 ${includeArchived ? "" : "AND (status IS NULL OR status != 'archived')"} LIMIT 1`,
         [DERMAGLOW_WORKSPACE_SLUG]
       );
 
@@ -57,7 +60,7 @@ export async function GET(request: NextRequest) {
           name: row.name,
           slug: row.slug,
           role: "compliance_reviewer",
-          status: "active",
+          status: row.status || "active",
           createdAt: row.created_at,
           memberCount: 1,
         })),
@@ -73,7 +76,9 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: true, data: [] });
     }
 
-    // Query all workspaces the authenticated user belongs to
+    const includeArchived = request.nextUrl.searchParams.get("includeArchived") === "true";
+
+    // Query all workspaces the authenticated user belongs to (excluding archived organizations by default)
     const res = await query<{
       id: string;
       name: string;
@@ -93,7 +98,8 @@ export async function GET(request: NextRequest) {
          (SELECT COUNT(*)::text FROM workspace_memberships WHERE workspace_id = w.id AND status = 'active') as member_count
        FROM workspaces w
        JOIN workspace_memberships wm ON w.id = wm.workspace_id
-       WHERE wm.user_id = $1 AND wm.status = 'active'
+       WHERE wm.user_id = $1 AND ${includeArchived ? "(wm.status = 'active' OR wm.status = 'suspended')" : "wm.status = 'active'"}
+         ${includeArchived ? "" : "AND (w.status IS NULL OR w.status != 'archived')"}
        ORDER BY w.name ASC`,
       [user.id]
     );
