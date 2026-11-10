@@ -20,6 +20,12 @@ export class VerificationContextLoader {
     claimId: string,
     workspaceContext?: { workspaceId?: string; workspaceSlug?: string }
   ): Promise<VerificationContext> {
+    if (!workspaceContext?.workspaceId && !workspaceContext?.workspaceSlug) {
+      throw new Error(
+        `Workspace context required: Verification context loader cannot proceed without explicit workspace authorization for claim "${claimId}".`
+      );
+    }
+
     // 1. Fetch claim, submission, and submission version
     const claimRes = await query<{
       claim_id: string;
@@ -65,8 +71,9 @@ export class VerificationContextLoader {
       JOIN submission_versions sv ON c.submission_version_id = sv.id
       JOIN workspaces w ON s.workspace_id = w.id
       WHERE c.id = $1 AND (
-        ( ($2::text IS NOT NULL AND w.id::text = $2::text) OR ($3::text IS NOT NULL AND w.slug = $3::text) )
-        OR ($2::text IS NULL AND $3::text IS NULL AND w.slug = 'dermaglow')
+        ($2::text IS NOT NULL AND w.id::text = $2::text)
+        OR
+        ($3::text IS NOT NULL AND w.slug = $3::text)
       )`,
       [claimId, workspaceContext?.workspaceId || null, workspaceContext?.workspaceSlug || null]
     );
@@ -89,8 +96,8 @@ export class VerificationContextLoader {
       const prodRes = await query<ContextProduct>(
         `SELECT id, name, sku, reference_price, currency, status
          FROM products
-         WHERE id = $1`,
-        [targetProductId]
+         WHERE id = $1 AND workspace_id = $2`,
+        [targetProductId, row.workspace_id]
       );
       if (prodRes.rows.length > 0) {
         product = prodRes.rows[0];

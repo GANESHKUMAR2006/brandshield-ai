@@ -54,6 +54,12 @@ export class ExtractionService {
     submissionId: string,
     options?: ExtractOptions
   ): Promise<ExtractionExecutionResult> {
+    if (!options?.workspaceId && !options?.workspaceSlug) {
+      throw new Error(
+        `Workspace context required: Extraction service cannot proceed without explicit workspace authorization for submission "${submissionId}".`
+      );
+    }
+
     const startTime = Date.now();
 
     // 1. Resolve workspace and verify submission existence
@@ -69,10 +75,11 @@ export class ExtractionService {
        FROM submissions s
        JOIN workspaces w ON s.workspace_id = w.id
        WHERE s.id = $1 AND (
-         ( ($2::text IS NOT NULL AND w.id::text = $2::text) OR ($3::text IS NOT NULL AND w.slug = $3::text) )
-         OR ($2::text IS NULL AND $3::text IS NULL AND w.slug = 'dermaglow')
+         ($2::text IS NOT NULL AND w.id::text = $2::text)
+         OR
+         ($3::text IS NOT NULL AND w.slug = $3::text)
        )`,
-      [submissionId, options?.workspaceId || null, options?.workspaceSlug || null]
+      [submissionId, options.workspaceId || null, options.workspaceSlug || null]
     );
 
     if (subRes.rows.length === 0) {

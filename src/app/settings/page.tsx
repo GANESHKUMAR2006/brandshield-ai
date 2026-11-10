@@ -128,8 +128,8 @@ export default function SettingsPage() {
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
 
   // Active workspace
-  const [workspaceId, setWorkspaceId] = useState<string>("00000000-0000-0000-0000-000000000001");
-  const [workspaceName, setWorkspaceName] = useState<string>("DermaGlow");
+  const [workspaceId, setWorkspaceId] = useState<string>("");
+  const [workspaceName, setWorkspaceName] = useState<string>("Workspace");
 
   // Team management state
   const [members, setMembers] = useState<WorkspaceMemberItem[]>(DEFAULT_MEMBERS);
@@ -142,16 +142,33 @@ export default function SettingsPage() {
   const [isRemoving, setIsRemoving] = useState(false);
   const [removeError, setRemoveError] = useState<string | null>(null);
 
-  // Sync workspace from localStorage
+  // Sync workspace from server session / localStorage
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      const storedId = localStorage.getItem("active_workspace_id");
-      const storedSlug = localStorage.getItem("active_workspace_slug");
-      if (storedId) setWorkspaceId(storedId);
-      if (storedSlug) {
-        setWorkspaceName(storedSlug.charAt(0).toUpperCase() + storedSlug.slice(1));
-      }
-    }
+    fetch("/api/auth/me")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.user?.workspaceId) {
+          setWorkspaceId(data.user.workspaceId);
+          setWorkspaceName(data.user.workspaceSlug ? data.user.workspaceSlug.charAt(0).toUpperCase() + data.user.workspaceSlug.slice(1) : "Workspace");
+        } else if (typeof window !== "undefined") {
+          const storedId = localStorage.getItem("active_workspace_id");
+          const storedSlug = localStorage.getItem("active_workspace_slug");
+          if (storedId) setWorkspaceId(storedId);
+          if (storedSlug) {
+            setWorkspaceName(storedSlug.charAt(0).toUpperCase() + storedSlug.slice(1));
+          }
+        }
+      })
+      .catch(() => {
+        if (typeof window !== "undefined") {
+          const storedId = localStorage.getItem("active_workspace_id");
+          const storedSlug = localStorage.getItem("active_workspace_slug");
+          if (storedId) setWorkspaceId(storedId);
+          if (storedSlug) {
+            setWorkspaceName(storedSlug.charAt(0).toUpperCase() + storedSlug.slice(1));
+          }
+        }
+      });
   }, []);
 
   const loadTeamData = useCallback(async () => {

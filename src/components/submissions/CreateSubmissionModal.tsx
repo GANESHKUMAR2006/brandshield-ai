@@ -272,7 +272,7 @@ export function CreateSubmissionModal({
 
           <div className="pt-3 border-t border-slate-800 flex items-center justify-between">
             <span className="text-[11px] text-slate-400">
-              Assigned to: <strong className="text-slate-200">DermaGlow Workspace</strong>
+              Assigned to: <strong className="text-slate-200">Active Workspace</strong>
             </span>
             <div className="flex items-center gap-2">
               <Button type="button" variant="outline" size="sm" onClick={onClose}>

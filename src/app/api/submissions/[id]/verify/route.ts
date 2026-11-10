@@ -14,7 +14,7 @@ export async function POST(
 ) {
   try {
     // 1. Authenticate caller and resolve workspace membership
-    const session = await resolveServerSession();
+    const session = await resolveServerSession(undefined, _request);
 
     // 2. Validate input parameters
     const { id } = await params;

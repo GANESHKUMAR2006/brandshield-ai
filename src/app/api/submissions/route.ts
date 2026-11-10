@@ -110,6 +110,16 @@ export async function POST(request: Request) {
       }
       const workspaceId = wsRes.rows[0].id;
 
+      if (productId) {
+        const prodCheck = await client.query<{ id: string }>(
+          `SELECT id FROM products WHERE id = $1 AND workspace_id = $2`,
+          [productId, workspaceId]
+        );
+        if (prodCheck.rows.length === 0) {
+          throw new Error(`Product "${productId}" not found or unauthorized in workspace.`);
+        }
+      }
+
       // 2. Insert master submission row with matched parameters
       const subRes = await client.query(
         `INSERT INTO submissions (workspace_id, product_id, title, content, channel, status, submitted_by)

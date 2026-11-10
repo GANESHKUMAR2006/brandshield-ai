@@ -201,7 +201,18 @@ export async function PATCH(
         newVersionCreated = true;
       }
 
-      // 4. Update the master submissions record
+      // 4. Validate updated product belongs to this workspace
+      if (productId !== undefined && productId !== null) {
+        const prodCheck = await client.query<{ id: string }>(
+          `SELECT id FROM products WHERE id = $1 AND workspace_id = $2`,
+          [productId, current.workspace_id]
+        );
+        if (prodCheck.rows.length === 0) {
+          throw new Error(`Product "${productId}" not found or unauthorized in workspace.`);
+        }
+      }
+
+      // Update the master submissions record
       const updatedTitle = title !== undefined ? title : current.title;
       const updatedContent = content !== undefined ? content : current.content;
       const updatedChannel = channel !== undefined ? channel : current.channel;

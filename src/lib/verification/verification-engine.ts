@@ -301,7 +301,9 @@ export class VerificationEngine {
           $3
         )`,
         [
-          context.submission.workspace_id || "00000000-0000-0000-0000-000000000001",
+          context.submission.workspace_id || workspaceContext?.workspaceId || (() => {
+            throw new Error(`Submission "${context.submission.id}" lacks valid workspace_id for audit logging.`);
+          })(),
           context.claim.id,
           JSON.stringify({
             run_id: runId,
@@ -340,6 +342,12 @@ export class VerificationEngine {
     submissionId: string,
     workspaceContext?: { workspaceId?: string; workspaceSlug?: string }
   ): Promise<VerificationExecutionResult[]> {
+    if (!workspaceContext?.workspaceId && !workspaceContext?.workspaceSlug) {
+      throw new Error(
+        `Workspace context required: Verification engine cannot proceed without explicit workspace authorization for submission "${submissionId}".`
+      );
+    }
+
     const { query: dbQuery } = await import("@/lib/db/server-db");
 
     // Fetch active claims for this submission
@@ -349,10 +357,11 @@ export class VerificationEngine {
        JOIN submissions s ON c.submission_id = s.id
        JOIN workspaces w ON s.workspace_id = w.id
        WHERE c.submission_id = $1 AND c.is_active = true AND (
-         ( ($2::text IS NOT NULL AND w.id::text = $2::text) OR ($3::text IS NOT NULL AND w.slug = $3::text) )
-         OR ($2::text IS NULL AND $3::text IS NULL AND w.slug = 'dermaglow')
+         ($2::text IS NOT NULL AND w.id::text = $2::text)
+         OR
+         ($3::text IS NOT NULL AND w.slug = $3::text)
        )`,
-      [submissionId, workspaceContext?.workspaceId || null, workspaceContext?.workspaceSlug || null]
+      [submissionId, workspaceContext.workspaceId || null, workspaceContext.workspaceSlug || null]
     );
 
     const results: VerificationExecutionResult[] = [];

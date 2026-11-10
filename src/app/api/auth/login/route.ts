@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
+import { query } from "@/lib/db/server-db";
 
 const loginSchema = z.object({
   email: z.string().email("Invalid email address"),
@@ -50,6 +51,29 @@ export async function POST(request: NextRequest) {
     }
 
     const user = data.user;
+
+    // Resolve workspaces from active database memberships
+    let userWorkspaces: string[] = [];
+    try {
+      const membershipsRes = await query<{ slug: string }>(
+        `SELECT w.slug
+         FROM workspace_memberships wm
+         JOIN workspaces w ON wm.workspace_id = w.id
+         WHERE wm.user_id = $1 AND wm.status = 'active'
+         ORDER BY wm.created_at ASC`,
+        [user.id]
+      );
+      userWorkspaces = membershipsRes.rows.map((r) => r.slug);
+    } catch {
+      // Continue to app_metadata check
+    }
+
+    if (userWorkspaces.length === 0 && user.app_metadata?.workspaces) {
+      userWorkspaces = Array.isArray(user.app_metadata.workspaces)
+        ? user.app_metadata.workspaces
+        : [user.app_metadata.workspaces];
+    }
+
     return NextResponse.json({
       success: true,
       message: "Authentication successful",
@@ -58,7 +82,7 @@ export async function POST(request: NextRequest) {
         email: user.email,
         name: user.user_metadata?.name || user.email || "Verified Reviewer",
         role: user.app_metadata?.role || "compliance_reviewer",
-        workspaces: user.app_metadata?.workspaces || ["dermaglow"],
+        workspaces: userWorkspaces,
       },
     });
   } catch (err) {

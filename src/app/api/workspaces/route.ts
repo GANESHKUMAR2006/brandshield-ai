@@ -15,7 +15,6 @@ export async function GET(request: NextRequest) {
     const session = await resolveServerSession();
 
     // Query all workspaces the authenticated user belongs to
-    // Also include 'dermaglow' for demo continuity if user has access or in demo mode
     const res = await query<{
       id: string;
       name: string;
@@ -34,8 +33,8 @@ export async function GET(request: NextRequest) {
          w.created_at,
          (SELECT COUNT(*)::text FROM workspace_memberships WHERE workspace_id = w.id AND status = 'active') as member_count
        FROM workspaces w
-       LEFT JOIN workspace_memberships wm ON w.id = wm.workspace_id AND wm.user_id = $1
-       WHERE wm.user_id = $1 OR w.slug = 'dermaglow'
+       JOIN workspace_memberships wm ON w.id = wm.workspace_id
+       WHERE wm.user_id = $1 AND wm.status = 'active'
        ORDER BY w.name ASC`,
       [session.userId]
     );

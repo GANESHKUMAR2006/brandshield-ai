@@ -20,7 +20,16 @@ import { ServerSessionIdentity, canManagePolicies, canViewPolicies } from "@/lib
 import { AuditService } from "@/lib/audit/audit-service";
 import { PolicyEngine } from "./policy-engine";
 import { RuleEvaluator } from "./rule-evaluator";
-import { DEFAULT_POLICIES } from "./default-policies";
+import { DEFAULT_POLICIES, DERMAGLOW_WORKSPACE_ID, RETINOL_SERUM_PRODUCT_ID } from "./default-policies";
+
+const DEMO_PRODUCT_IDS = new Set<string>([
+  "00000000-0000-0000-0000-000000000010",
+  "00000000-0000-0000-0000-000000000011",
+  "00000000-0000-0000-0000-000000000012",
+  "00000000-0000-0000-0000-000000000013",
+  "00000000-0000-0000-0000-000000000014",
+  RETINOL_SERUM_PRODUCT_ID,
+]);
 import { PolicySchemaValidator, PolicyValidationResult } from "./policy-schema-validator";
 
 // In-memory policy store for local development mode when DB connection string is unavailable
@@ -180,7 +189,7 @@ export class PolicyService {
     } catch {
       // Demo fallback: use in-memory policies
       let filtered = inMemoryPolicies.filter(
-        (p) => p.workspace_id === session.workspaceId || session.isDemoFallback
+        (p) => p.workspace_id === session.workspaceId
       );
 
       if (filters?.category) {
@@ -306,7 +315,7 @@ export class PolicyService {
       };
     } catch {
       // Demo fallback: search in memory
-      const found = inMemoryPolicies.find((p) => p.id === policyId || p.code === policyId);
+      const found = inMemoryPolicies.find((p) => (p.id === policyId || p.code === policyId) && p.workspace_id === session.workspaceId);
       if (!found) {
         throw new Error(`Policy "${policyId}" not found.`);
       }
@@ -364,6 +373,16 @@ export class PolicyService {
 
     try {
       return await withTransaction(async (client) => {
+        if (input.productId) {
+          const prodCheck = await client.query<{ id: string }>(
+            `SELECT id FROM products WHERE id = $1 AND workspace_id = $2`,
+            [input.productId, session.workspaceId]
+          );
+          if (prodCheck.rows.length === 0) {
+            throw new Error(`Product "${input.productId}" not found or unauthorized in workspace.`);
+          }
+        }
+
         // 1. Insert master policy record (draft)
         const polRes = await client.query<{ id: string; created_at: string }>(
           `INSERT INTO policies (workspace_id, product_id, name, code, description, category, severity, status)
@@ -452,8 +471,20 @@ export class PolicyService {
           versions: [newVersion],
         };
       });
-    } catch {
+    } catch (err: any) {
+      if (err.message && (err.message.includes("not found or unauthorized in workspace") || err.message.includes("Forbidden"))) {
+        throw err;
+      }
       // Demo fallback: update in-memory
+      if (input.productId) {
+        const isDemoWs =
+          session.workspaceId === DERMAGLOW_WORKSPACE_ID ||
+          session.workspaceSlug === "dermaglow";
+        const isKnownDemoProduct = DEMO_PRODUCT_IDS.has(input.productId);
+        if (!isDemoWs || !isKnownDemoProduct) {
+          throw new Error(`Product "${input.productId}" not found or unauthorized in workspace.`);
+        }
+      }
       const policyId = `pol-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
       const versionId = `ver-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
       const createdAt = new Date().toISOString();
@@ -551,6 +582,15 @@ export class PolicyService {
 
     try {
       return await withTransaction(async (client) => {
+        // Verify policy belongs to caller workspace
+        const polCheck = await client.query<{ id: string }>(
+          `SELECT id FROM policies WHERE id = $1 AND workspace_id = $2`,
+          [policyId, session.workspaceId]
+        );
+        if (polCheck.rows.length === 0) {
+          throw new Error(`Policy "${policyId}" not found or unauthorized in workspace.`);
+        }
+
         // Find latest version number
         const numRes = await client.query<{ max_ver: number }>(
           `SELECT COALESCE(MAX(version_number), 0) as max_ver
@@ -607,9 +647,12 @@ export class PolicyService {
           created_at: verRes.rows[0].created_at,
         };
       });
-    } catch {
+    } catch (err: any) {
+      if (err.message && (err.message.includes("not found or unauthorized in workspace") || err.message.includes("Forbidden"))) {
+        throw err;
+      }
       // In-memory fallback
-      const policy = inMemoryPolicies.find((p) => p.id === policyId || p.code === policyId);
+      const policy = inMemoryPolicies.find((p) => (p.id === policyId || p.code === policyId) && p.workspace_id === session.workspaceId);
       if (!policy) {
         throw new Error(`Policy "${policyId}" not found.`);
       }
@@ -759,9 +802,12 @@ export class PolicyService {
 
         return await this.getPolicyById(session, policyId);
       });
-    } catch {
+    } catch (err: any) {
+      if (err.message && (err.message.includes("not found or unauthorized in workspace") || err.message.includes("Forbidden"))) {
+        throw err;
+      }
       // In-memory fallback
-      const found = inMemoryPolicies.find((p) => p.id === policyId || p.code === policyId);
+      const found = inMemoryPolicies.find((p) => (p.id === policyId || p.code === policyId) && p.workspace_id === session.workspaceId);
       if (!found) throw new Error(`Policy "${policyId}" not found.`);
 
       if (input.name) found.name = input.name;
@@ -817,6 +863,15 @@ export class PolicyService {
 
     try {
       return await withTransaction(async (client) => {
+        // Verify policy belongs to caller workspace
+        const polCheck = await client.query<{ id: string }>(
+          `SELECT id FROM policies WHERE id = $1 AND workspace_id = $2`,
+          [policyId, session.workspaceId]
+        );
+        if (polCheck.rows.length === 0) {
+          throw new Error(`Policy "${policyId}" not found or unauthorized in workspace.`);
+        }
+
         // 1. Mark existing active version as superseded
         await client.query(
           `UPDATE policy_versions
@@ -875,9 +930,12 @@ export class PolicyService {
 
         return await this.getPolicyById(session, policyId);
       });
-    } catch {
+    } catch (err: any) {
+      if (err.message && (err.message.includes("not found or unauthorized in workspace") || err.message.includes("Forbidden"))) {
+        throw err;
+      }
       // In-memory fallback
-      const policy = inMemoryPolicies.find((p) => p.id === policyId || p.code === policyId);
+      const policy = inMemoryPolicies.find((p) => (p.id === policyId || p.code === policyId) && p.workspace_id === session.workspaceId);
       if (!policy) {
         throw new Error(`Policy "${policyId}" not found.`);
       }
@@ -1062,11 +1120,19 @@ export class PolicyService {
 
     try {
       return await withTransaction(async (client) => {
+        const polCheck = await client.query<{ id: string }>(
+          `SELECT id FROM policies WHERE id = $1 AND workspace_id = $2`,
+          [policyId, session.workspaceId]
+        );
+        if (polCheck.rows.length === 0) {
+          throw new Error(`Policy "${policyId}" not found or unauthorized in workspace.`);
+        }
+
         await client.query(
           `UPDATE policies
            SET status = 'archived', updated_at = now()
-           WHERE id = $1`,
-          [policyId]
+           WHERE id = $1 AND workspace_id = $2`,
+          [policyId, session.workspaceId]
         );
 
         await client.query(
@@ -1092,8 +1158,11 @@ export class PolicyService {
 
         return await this.getPolicyById(session, policyId);
       });
-    } catch {
-      const policy = inMemoryPolicies.find((p) => p.id === policyId || p.code === policyId);
+    } catch (err: any) {
+      if (err.message && (err.message.includes("not found or unauthorized in workspace") || err.message.includes("Forbidden"))) {
+        throw err;
+      }
+      const policy = inMemoryPolicies.find((p) => (p.id === policyId || p.code === policyId) && p.workspace_id === session.workspaceId);
       if (!policy) {
         throw new Error(`Policy "${policyId}" not found.`);
       }

@@ -36,18 +36,16 @@ export async function GET(
 
     const ws = wsRes.rows[0];
 
-    // Verify user membership in this workspace (or DermaGlow demo)
-    if (ws.slug !== "dermaglow") {
-      const memberCheck = await query(
-        `SELECT id, role, status FROM workspace_memberships WHERE workspace_id = $1 AND user_id = $2 AND status = 'active' LIMIT 1`,
-        [id, session.userId]
+    // Verify user membership in this workspace
+    const memberCheck = await query(
+      `SELECT id, role, status FROM workspace_memberships WHERE workspace_id = $1 AND user_id = $2 AND status = 'active' LIMIT 1`,
+      [id, session.userId]
+    );
+    if (memberCheck.rows.length === 0 && session.workspaceId !== id) {
+      return NextResponse.json(
+        { success: false, error: "Forbidden: You are not a member of this workspace" },
+        { status: 403 }
       );
-      if (memberCheck.rows.length === 0 && session.workspaceId !== id) {
-        return NextResponse.json(
-          { success: false, error: "Forbidden: You are not a member of this workspace" },
-          { status: 403 }
-        );
-      }
     }
 
     // Get member stats

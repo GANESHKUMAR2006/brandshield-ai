@@ -16,7 +16,7 @@ export interface ComprehensiveHealthResponse {
       name: string;
       status: "connected" | "disconnected" | "unconfigured";
       latencyMs?: number;
-      workspace: string;
+      workspace?: string;
       error?: string;
     };
     ollama: {
@@ -59,8 +59,7 @@ export async function GET(): Promise<NextResponse<ComprehensiveHealthResponse>> 
       });
       const { error } = await supabase
         .from("workspaces")
-        .select("id, name, slug")
-        .eq("slug", "dermaglow")
+        .select("id")
         .limit(1)
         .maybeSingle();
 
@@ -165,7 +164,6 @@ export async function GET(): Promise<NextResponse<ComprehensiveHealthResponse>> 
       database: {
         name: "Supabase PostgreSQL 17",
         status: dbStatus,
-        workspace: "dermaglow",
         ...(dbLatencyMs !== undefined ? { latencyMs: dbLatencyMs } : {}),
         ...(dbError ? { error: dbError } : {}),
       },

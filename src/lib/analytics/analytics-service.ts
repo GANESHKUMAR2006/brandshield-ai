@@ -40,6 +40,21 @@ export class ComplianceAnalyticsService {
       throw new Error(`Forbidden: Role "${session.role}" lacks permission to access compliance analytics.`);
     }
 
+    if (options?.workspaceSlug && options.workspaceSlug !== session.workspaceSlug) {
+      if (session.role !== "admin") {
+        throw new Error(`Forbidden: Role "${session.role}" cannot query cross-workspace analytics.`);
+      }
+      const memberCheck = await query(
+        `SELECT id FROM workspace_memberships wm
+         JOIN workspaces w ON wm.workspace_id = w.id
+         WHERE wm.user_id = $1 AND w.slug = $2 AND wm.status = 'active' LIMIT 1`,
+        [session.userId, options.workspaceSlug]
+      );
+      if (memberCheck.rows.length === 0) {
+        throw new Error(`Forbidden: User does not belong to requested workspace "${options.workspaceSlug}".`);
+      }
+    }
+
     const targetSlug =
       session.role === "admin" && options?.workspaceSlug
         ? options.workspaceSlug
@@ -317,6 +332,21 @@ export class ComplianceAnalyticsService {
   ): Promise<ComplianceInsight[]> {
     if (!canAccessAdminAnalytics(session.role)) {
       throw new Error(`Forbidden: Role "${session.role}" lacks permission to access compliance insights.`);
+    }
+
+    if (workspaceSlug && workspaceSlug !== session.workspaceSlug) {
+      if (session.role !== "admin") {
+        throw new Error(`Forbidden: Role "${session.role}" cannot query cross-workspace insights.`);
+      }
+      const memberCheck = await query(
+        `SELECT id FROM workspace_memberships wm
+         JOIN workspaces w ON wm.workspace_id = w.id
+         WHERE wm.user_id = $1 AND w.slug = $2 AND wm.status = 'active' LIMIT 1`,
+        [session.userId, workspaceSlug]
+      );
+      if (memberCheck.rows.length === 0) {
+        throw new Error(`Forbidden: User does not belong to requested workspace "${workspaceSlug}".`);
+      }
     }
 
     const targetSlug =
@@ -625,7 +655,8 @@ export class ComplianceAnalyticsService {
     claims: Array<ClaimRecord & { hasEvidence?: boolean }>,
     submissionsCount: number = 0,
     publishedCount: number = 0,
-    historicalDecisions?: Array<{ decision: string; override_reason?: string | null }>
+    historicalDecisions?: Array<{ decision: string; override_reason?: string | null }>,
+    workspaceSlug: string = "default"
   ): ComplianceAnalyticsSummary {
     const totalExtracted = claims.length;
     let activeClaims = 0;
@@ -718,7 +749,7 @@ export class ComplianceAnalyticsService {
         : 0;
 
     return {
-      workspaceSlug: "dermaglow",
+      workspaceSlug,
       totalSubmissions: submissionsCount,
       publishedSubmissions: publishedCount,
       draftSubmissions: 0,

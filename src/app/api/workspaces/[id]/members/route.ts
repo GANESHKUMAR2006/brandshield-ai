@@ -22,18 +22,16 @@ export async function GET(
 
     const slug = wsCheck.rows[0].slug;
 
-    // Verify caller is member of workspace or accessing DermaGlow demo
-    if (slug !== "dermaglow") {
-      const isMember = await query(
-        `SELECT id FROM workspace_memberships WHERE workspace_id = $1 AND user_id = $2 AND status = 'active' LIMIT 1`,
-        [id, session.userId]
+    // Verify caller is member of workspace
+    const isMember = await query(
+      `SELECT id FROM workspace_memberships WHERE workspace_id = $1 AND user_id = $2 AND status = 'active' LIMIT 1`,
+      [id, session.userId]
+    );
+    if (isMember.rows.length === 0 && session.workspaceId !== id) {
+      return NextResponse.json(
+        { success: false, error: "Forbidden: You are not an active member of this workspace" },
+        { status: 403 }
       );
-      if (isMember.rows.length === 0 && session.workspaceId !== id) {
-        return NextResponse.json(
-          { success: false, error: "Forbidden: You are not an active member of this workspace" },
-          { status: 403 }
-        );
-      }
     }
 
     // Query active members with user details

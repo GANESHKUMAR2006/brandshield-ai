@@ -277,6 +277,17 @@ export async function POST(request: NextRequest) {
 
       const doc = existingDoc.rows[0];
       const targetVersionId = versionId || doc.current_version_id;
+
+      if (targetVersionId) {
+        const verCheck = await client.query<{ id: string }>(
+          `SELECT id FROM document_versions WHERE id = $1 AND source_document_id = $2`,
+          [targetVersionId, doc.id]
+        );
+        if (verCheck.rows.length === 0) {
+          throw new Error(`Document version "${targetVersionId}" does not belong to document "${doc.id}".`);
+        }
+      }
+
       let newApprovalStatus = doc.approval_status;
       let auditAction = `document_${action}`;
 

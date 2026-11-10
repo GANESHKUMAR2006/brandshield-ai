@@ -163,6 +163,21 @@ export class AuditService {
       throw new Error(`Forbidden: Role "${session.role}" lacks permission to view audit history.`);
     }
 
+    if (filters?.workspaceSlug && filters.workspaceSlug !== session.workspaceSlug) {
+      if (session.role !== "admin") {
+        throw new Error(`Forbidden: Role "${session.role}" cannot query cross-workspace audit trail.`);
+      }
+      const memberCheck = await query(
+        `SELECT id FROM workspace_memberships wm
+         JOIN workspaces w ON wm.workspace_id = w.id
+         WHERE wm.user_id = $1 AND w.slug = $2 AND wm.status = 'active' LIMIT 1`,
+        [session.userId, filters.workspaceSlug]
+      );
+      if (memberCheck.rows.length === 0) {
+        throw new Error(`Forbidden: User does not belong to requested workspace "${filters.workspaceSlug}".`);
+      }
+    }
+
     const targetSlug =
       session.role === "admin" && filters?.workspaceSlug
         ? filters.workspaceSlug

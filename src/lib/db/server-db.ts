@@ -62,6 +62,17 @@ export async function query<T extends QueryResultRow = QueryResultRow>(
 export async function withTransaction<T>(
   callback: (client: PoolClient) => Promise<T>
 ): Promise<T> {
+  if (
+    process.env.NODE_ENV !== "production" &&
+    process.env.NEXT_PUBLIC_APP_ENV !== "production" &&
+    testQueryOverride
+  ) {
+    const mockClient = {
+      query: (text: string, params?: unknown[]) => testQueryOverride!(text, params),
+      release: () => {},
+    } as unknown as PoolClient;
+    return await callback(mockClient);
+  }
   const p = getDbPool();
   const client = await p.connect();
 

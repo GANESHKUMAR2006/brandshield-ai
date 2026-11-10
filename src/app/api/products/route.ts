@@ -1,8 +1,15 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { query } from "@/lib/db/server-db";
+import {
+  resolveServerSession,
+  AuthenticationRequiredError,
+  WorkspaceAccessError,
+} from "@/lib/auth/server-session";
 
-export async function GET() {
+export async function GET(request?: NextRequest) {
   try {
+    const session = await resolveServerSession(undefined, request);
+
     const productsRes = await query(`
       SELECT 
         p.id,
@@ -31,17 +38,29 @@ export async function GET() {
       FROM products p
       JOIN workspaces w ON p.workspace_id = w.id
       LEFT JOIN approved_facts af ON p.id = af.product_id
-      WHERE w.slug = 'dermaglow'
+      WHERE w.slug = $1
       GROUP BY p.id
       ORDER BY p.name ASC;
-    `);
+    `, [session.workspaceSlug]);
 
     return NextResponse.json({
       success: true,
-      workspace: "DermaGlow",
+      workspace: session.workspaceSlug,
       data: productsRes.rows,
     });
   } catch (error) {
+    if (error instanceof AuthenticationRequiredError) {
+      return NextResponse.json(
+        { success: false, error: "Authentication required", details: error.message },
+        { status: 401 }
+      );
+    }
+    if (error instanceof WorkspaceAccessError) {
+      return NextResponse.json(
+        { success: false, error: "Forbidden", details: error.message },
+        { status: 403 }
+      );
+    }
     const message = error instanceof Error ? error.message : "Failed to retrieve products";
     return NextResponse.json(
       { success: false, error: "Database error retrieving products", details: message },
