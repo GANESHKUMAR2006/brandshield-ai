@@ -5,7 +5,7 @@ import {
   AuthenticationRequiredError,
 } from "@/lib/auth/server-session";
 
-export async function GET(request: NextRequest) {
+export async function GET(request?: NextRequest) {
   try {
     // 1. User must come strictly from a verified Supabase server session
     const authUser = await resolveAuthenticatedUser(request);

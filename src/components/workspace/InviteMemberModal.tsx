@@ -88,7 +88,7 @@ export function InviteMemberModal({
   const handleCopyLink = () => {
     if (!successInfo?.inviteToken) return;
     const origin = typeof window !== "undefined" ? window.location.origin : "";
-    const link = `${origin}/login?invite=${successInfo.inviteToken}`;
+    const link = `${origin}/invite?token=${encodeURIComponent(successInfo.inviteToken)}`;
     navigator.clipboard.writeText(link);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);

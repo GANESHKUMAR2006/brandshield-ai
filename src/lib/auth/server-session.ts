@@ -13,6 +13,7 @@ export interface ServerSessionIdentity {
   workspaceSlug: string;
   isAuthenticated: boolean;
   isDemoFallback: boolean;
+  emailConfirmed?: boolean;
 }
 
 export interface AuthenticatedUser {
@@ -20,6 +21,7 @@ export interface AuthenticatedUser {
   email?: string;
   name?: string;
   isAuthenticated: boolean;
+  emailConfirmed?: boolean;
 }
 
 export interface ResolveSessionOptions {
@@ -37,6 +39,7 @@ export interface VerifiedWorkspaceContext {
   workspaceSlug: string;
   workspaceName: string;
   permissions: Set<WorkspacePermission>;
+  emailConfirmed?: boolean;
 }
 
 export const ROLE_PERMISSIONS: Record<ReviewerRole, WorkspacePermission[]> = {
@@ -154,6 +157,7 @@ export async function resolveAuthenticatedUser(
         email: testSessionOverride.userEmail,
         name: testSessionOverride.userName,
         isAuthenticated: true,
+        emailConfirmed: testSessionOverride.emailConfirmed !== undefined ? testSessionOverride.emailConfirmed : true,
       };
     }
     return null;
@@ -177,6 +181,7 @@ export async function resolveAuthenticatedUser(
       email: user.email,
       name: user.user_metadata?.name || user.email || "Verified Member",
       isAuthenticated: true,
+      emailConfirmed: Boolean(user.email_confirmed_at || (user as any).confirmed_at),
     };
   } catch (err) {
     console.error("[resolveAuthenticatedUser] Failed to resolve Supabase server session:", err);
@@ -451,6 +456,7 @@ export async function requireWorkspaceAccess(
         workspaceSlug: (row as any).slug || (row as any).workspace_slug || requestedTarget || "",
         workspaceName: (row as any).workspace_name || (row as any).name || (row as any).slug || "Workspace",
         permissions: perms,
+        emailConfirmed: user.emailConfirmed,
       };
     }
 
@@ -524,6 +530,7 @@ export async function requireWorkspaceAccess(
           workspaceSlug: effectiveSlug,
           workspaceName: resolvedWorkspaceName,
           permissions: perms,
+          emailConfirmed: user.emailConfirmed,
         };
       }
     } catch (sbErr) {
@@ -608,6 +615,7 @@ export async function resolveServerSession(
           workspaceSlug: ctx.workspaceSlug,
           isAuthenticated: true,
           isDemoFallback: false,
+          emailConfirmed: ctx.emailConfirmed,
         };
       } catch (err) {
         if (err instanceof WorkspaceAccessError) {
@@ -620,6 +628,7 @@ export async function resolveServerSession(
             workspaceSlug: "",
             isAuthenticated: true,
             isDemoFallback: false,
+            emailConfirmed: user.emailConfirmed,
           };
         }
         throw err;
@@ -637,6 +646,7 @@ export async function resolveServerSession(
     workspaceSlug: ctx.workspaceSlug,
     isAuthenticated: ctx.userId !== CURRENT_USER.id,
     isDemoFallback: ctx.userId === CURRENT_USER.id,
+    emailConfirmed: ctx.emailConfirmed,
   };
 }
 

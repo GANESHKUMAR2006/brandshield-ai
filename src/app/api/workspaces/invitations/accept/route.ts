@@ -94,7 +94,46 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // In a transaction, mark invitation accepted and insert active membership
+    // Phase 2: Strict Email Matching Check
+    // Prevent another authenticated user from claiming an invitation addressed to a different person
+    const normalizedUserEmail = (user.email || "").toLowerCase().trim();
+    const normalizedInviteEmail = invite.email.toLowerCase().trim();
+
+    if (normalizedUserEmail !== normalizedInviteEmail) {
+      console.warn(
+        `[POST /api/workspaces/invitations/accept] Email mismatch rejected: session email "${normalizedUserEmail}" attempted to accept invitation addressed to "${normalizedInviteEmail}".`
+      );
+      return NextResponse.json(
+        {
+          success: false,
+          error: `This invitation was issued to ${invite.email}. You are currently signed in as ${user.email}. Please sign out and sign in with the invited email address.`,
+          mismatch: true,
+          expectedEmail: invite.email,
+          currentEmail: user.email,
+        },
+        { status: 403 }
+      );
+    }
+
+    // Strict Server-Side Email-Confirmation Enforcement
+    // Rejects unconfirmed accounts without consuming the invitation or creating membership
+    if (user.emailConfirmed === false) {
+      console.warn(
+        `[POST /api/workspaces/invitations/accept] Unconfirmed email rejected: user "${user.email}" (${user.id}) attempted to accept invitation without verified email.`
+      );
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Your email address has not been confirmed. Please click the confirmation link sent to your inbox before accepting this workspace invitation.",
+          unconfirmedEmail: true,
+          email: user.email,
+        },
+        { status: 403 }
+      );
+    }
+
+    // In a transaction, mark invitation accepted and insert/update active membership
+    // Role preservation: an existing administrator cannot be downgraded by accepting a lower-role invitation
     await withTransaction(async (client) => {
       await client.query(
         `UPDATE workspace_invitations
@@ -107,7 +146,10 @@ export async function POST(request: NextRequest) {
         `INSERT INTO workspace_memberships (workspace_id, user_id, role, status)
          VALUES ($1, $2, $3, 'active')
          ON CONFLICT (workspace_id, user_id) 
-         DO UPDATE SET role = EXCLUDED.role, status = 'active', updated_at = now()`,
+         DO UPDATE SET 
+           role = CASE WHEN workspace_memberships.role = 'admin' THEN 'admin' ELSE EXCLUDED.role END,
+           status = 'active', 
+           updated_at = now()`,
         [invite.workspace_id, user.id, invite.role]
       );
     });

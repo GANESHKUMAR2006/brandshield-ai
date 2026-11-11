@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { SITE_CONFIG, DEMO_WORKSPACE, CURRENT_USER } from "@/config/site";
 import { BrandShieldLogo } from "@/components/ui/Icons";
 import { WorkspaceSwitcher } from "@/components/workspace/WorkspaceSwitcher";
+import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 import {
   Menu,
   Bell,
@@ -118,16 +119,32 @@ export function TopNav({ onOpenMobileMenu }: TopNavProps) {
 
   const handleSignOut = async () => {
     try {
+      // 1. Client-side Supabase signOut
+      try {
+        const supabase = getSupabaseBrowserClient();
+        await supabase.auth.signOut();
+      } catch {
+        // Safe to ignore if browser client is not initialized
+      }
+
+      // 2. Server-side session & cookie termination
       await fetch("/api/auth/logout", { method: "POST" });
     } catch {
       // Proceed with redirection even if network fails
+    } finally {
+      if (typeof window !== "undefined") {
+        localStorage.removeItem("active_workspace_id");
+        localStorage.removeItem("active_workspace_slug");
+      }
+      setUserInfo({
+        name: "",
+        email: "",
+        role: "",
+        initials: "",
+        workspaceSlug: "",
+      });
+      window.location.href = "/login?signedOut=true&switched=true";
     }
-    if (typeof window !== "undefined") {
-      localStorage.removeItem("active_workspace_id");
-      localStorage.removeItem("active_workspace_slug");
-    }
-    router.push("/login?switched=true");
-    router.refresh();
   };
 
   const handleSwitchAccount = async () => {

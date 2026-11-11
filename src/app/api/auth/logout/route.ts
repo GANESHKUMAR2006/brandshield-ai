@@ -2,11 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { cookies } from "next/headers";
 
-export async function POST(request: NextRequest) {
+export async function POST(request?: NextRequest) {
   try {
     try {
       const supabase = await getSupabaseServerClient();
-      await supabase.auth.signOut({ scope: "global" });
+      try {
+        await supabase.auth.signOut({ scope: "global" });
+      } catch {
+        await supabase.auth.signOut();
+      }
     } catch {
       // Continue even if Supabase remote session invalidation was already completed or server client unavailable
     }
@@ -17,13 +21,26 @@ export async function POST(request: NextRequest) {
     });
 
     // 1. Explicitly expire all Supabase authentication cookies and BrandShield workspace cookies
-    const allCookies = request.cookies.getAll();
+    let allCookies: Array<{ name: string; value: string }> = [];
+    if (request?.cookies) {
+      allCookies = request.cookies.getAll();
+    } else {
+      try {
+        const cookieStore = await cookies();
+        allCookies = cookieStore.getAll();
+      } catch {
+        // Outside Next.js request context
+      }
+    }
+
     allCookies.forEach((c) => {
+      const lower = c.name.toLowerCase();
       if (
-        c.name.startsWith("sb-") ||
-        c.name.includes("auth-token") ||
-        c.name.includes("supabase") ||
-        c.name.includes("workspace")
+        lower.startsWith("sb-") ||
+        lower.includes("auth-token") ||
+        lower.includes("supabase") ||
+        lower.includes("session") ||
+        lower.includes("workspace")
       ) {
         response.cookies.set({
           name: c.name,
@@ -55,11 +72,13 @@ export async function POST(request: NextRequest) {
     try {
       const cookieStore = await cookies();
       allCookies.forEach((c) => {
+        const lower = c.name.toLowerCase();
         if (
-          c.name.startsWith("sb-") ||
-          c.name.includes("auth-token") ||
-          c.name.includes("supabase") ||
-          c.name.includes("workspace")
+          lower.startsWith("sb-") ||
+          lower.includes("auth-token") ||
+          lower.includes("supabase") ||
+          lower.includes("session") ||
+          lower.includes("workspace")
         ) {
           cookieStore.delete(c.name);
         }
@@ -70,6 +89,14 @@ export async function POST(request: NextRequest) {
     } catch {
       // Ignore if called in context where cookieStore.delete is restricted
     }
+
+    // 3. Set anti-caching headers so client browsers never serve stale auth states
+    response.headers.set(
+      "Cache-Control",
+      "no-store, no-cache, must-revalidate, proxy-revalidate"
+    );
+    response.headers.set("Pragma", "no-cache");
+    response.headers.set("Expires", "0");
 
     return response;
   } catch (err) {

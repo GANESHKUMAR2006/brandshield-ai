@@ -48,6 +48,9 @@ export async function updateSession(request: NextRequest) {
   // Public paths that never require authentication
   const isPublicPath =
     pathname === "/login" ||
+    pathname === "/register" ||
+    pathname === "/join-organization" ||
+    pathname === "/invite" ||
     pathname === "/forgot-password" ||
     pathname === "/reset-password" ||
     pathname.startsWith("/auth/callback") ||

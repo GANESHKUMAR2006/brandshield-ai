@@ -48,10 +48,12 @@ export function LoginForm() {
   const searchParams = useSearchParams();
   const redirectTo = searchParams.get("redirect") || "/dashboard";
   const switchedParam = searchParams.get("switched") === "true";
+  const signedOutParam = searchParams.get("signedOut") === "true";
+  const emailParam = searchParams.get("email");
   const reasonParam = searchParams.get("reason") || searchParams.get("error");
 
-  // Form State: Starts empty so no demo or prior account is reused automatically
-  const [email, setEmail] = useState("");
+  // Form State: Starts empty or with email query param
+  const [email, setEmail] = useState(emailParam || "");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
@@ -87,12 +89,21 @@ export function LoginForm() {
       return;
     }
 
-    // 2. Explicit account switch parameter check
-    if (switchedParam || searchParams.get("switch") === "true") {
+    // 2. Explicit account switch / signed-out parameter check
+    if (switchedParam || signedOutParam || searchParams.get("switch") === "true") {
       setSwitchNotice(
         "Previous account signed out. You can now sign in with another account."
       );
+      if (emailParam) {
+        setEmail(emailParam);
+        setPassword("");
+      }
       return;
+    }
+
+    if (emailParam) {
+      setEmail(emailParam);
+      setPassword("");
     }
 
     // 3. Inspect existing authenticated session for deliberate account switching
@@ -453,6 +464,26 @@ export function LoginForm() {
                   </>
                 )}
               </button>
+            </div>
+
+            {/* Create Account & Join Links */}
+            <div className="pt-3 flex items-center justify-between text-xs text-slate-400 border-t border-slate-800/60 mt-4">
+              <span>New to BrandShield?</span>
+              <div className="flex items-center gap-3">
+                <Link
+                  href="/register"
+                  className="text-violet-400 hover:text-violet-300 font-medium underline transition-colors"
+                >
+                  Create Account
+                </Link>
+                <span>·</span>
+                <Link
+                  href="/join-organization"
+                  className="text-cyan-400 hover:text-cyan-300 font-medium underline transition-colors"
+                >
+                  Join Organization
+                </Link>
+              </div>
             </div>
           </form>
 

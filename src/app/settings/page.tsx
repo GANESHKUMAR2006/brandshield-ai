@@ -145,6 +145,51 @@ export default function SettingsPage() {
   const [isLoadingTeam, setIsLoadingTeam] = useState(false);
   const [teamNotification, setTeamNotification] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
+  // Organization Join Code state
+  const [joinCodeStatus, setJoinCodeStatus] = useState<{
+    hasActiveCode: boolean;
+    enabled: boolean;
+    updatedAt: string | null;
+  } | null>(null);
+  const [activeJoinCode, setActiveJoinCode] = useState<string | null>(null);
+  const [isRotatingJoinCode, setIsRotatingJoinCode] = useState(false);
+  const [isRevokingJoinCode, setIsRevokingJoinCode] = useState(false);
+  const [joinCodeCopied, setJoinCodeCopied] = useState(false);
+
+  // Join Requests state
+  interface JoinRequestItem {
+    id: string;
+    workspaceId: string;
+    userId: string;
+    userEmail: string;
+    userName: string;
+    status: "pending" | "approved" | "rejected" | "canceled";
+    reviewedBy: string | null;
+    reviewedAt: string | null;
+    assignedRole: string | null;
+    rejectionReason: string | null;
+    createdAt: string;
+  }
+  const [joinRequests, setJoinRequests] = useState<JoinRequestItem[]>([]);
+  const [isLoadingJoinRequests, setIsLoadingJoinRequests] = useState(false);
+  const [requestToApprove, setRequestToApprove] = useState<JoinRequestItem | null>(null);
+  const [approvalRole, setApprovalRole] = useState<ReviewerRole>("compliance_reviewer");
+  const [isApproving, setIsApproving] = useState(false);
+  const [requestToReject, setRequestToReject] = useState<JoinRequestItem | null>(null);
+  const [rejectionReason, setRejectionReason] = useState("");
+  const [isRejecting, setIsRejecting] = useState(false);
+
+  // Email Diagnostic Test state
+  const [testEmailRecipient, setTestEmailRecipient] = useState("brandshield11@gmail.com");
+  const [isSendingTestEmail, setIsSendingTestEmail] = useState(false);
+  const [testEmailResult, setTestEmailResult] = useState<{
+    success: boolean;
+    message?: string;
+    error?: string;
+    provider?: string;
+    timestamp?: string;
+  } | null>(null);
+
   // Remove confirmation modal
   const [memberToRemove, setMemberToRemove] = useState<WorkspaceMemberItem | null>(null);
   const [isRemoving, setIsRemoving] = useState(false);
@@ -199,6 +244,43 @@ export default function SettingsPage() {
     }
   }, [workspaceId]);
 
+  const loadJoinCodeStatus = useCallback(async () => {
+    if (!workspaceId) return;
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceId}/join-code`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          setJoinCodeStatus({
+            hasActiveCode: data.hasActiveCode,
+            enabled: data.enabled,
+            updatedAt: data.updatedAt,
+          });
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }, [workspaceId]);
+
+  const loadJoinRequests = useCallback(async () => {
+    if (!workspaceId) return;
+    setIsLoadingJoinRequests(true);
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceId}/join-requests`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && Array.isArray(data.requests)) {
+          setJoinRequests(data.requests);
+        }
+      }
+    } catch {
+      // ignore
+    } finally {
+      setIsLoadingJoinRequests(false);
+    }
+  }, [workspaceId]);
+
   const loadTeamData = useCallback(async () => {
     if (!workspaceId) return;
     setIsLoadingTeam(true);
@@ -209,6 +291,7 @@ export default function SettingsPage() {
       ]);
       setMembers(membersData && membersData.length > 0 ? membersData : DEFAULT_MEMBERS);
       setInvitations(invitesData || []);
+      await Promise.all([loadJoinCodeStatus(), loadJoinRequests()]);
     } catch {
       // Use fallback
       setMembers(DEFAULT_MEMBERS);
@@ -216,7 +299,166 @@ export default function SettingsPage() {
     } finally {
       setIsLoadingTeam(false);
     }
-  }, [workspaceId]);
+  }, [workspaceId, loadJoinCodeStatus, loadJoinRequests]);
+
+  const handleGenerateJoinCode = async () => {
+    if (!workspaceId) return;
+    setIsRotatingJoinCode(true);
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceId}/join-code`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "Failed to generate join code");
+      }
+      setActiveJoinCode(data.joinCode);
+      setJoinCodeStatus({
+        hasActiveCode: true,
+        enabled: true,
+        updatedAt: data.updatedAt,
+      });
+      setTeamNotification({
+        type: "success",
+        message: "Organization join code generated! Share this code with members seeking to request access.",
+      });
+      setTimeout(() => setTeamNotification(null), 6000);
+    } catch (err) {
+      setTeamNotification({
+        type: "error",
+        message: err instanceof Error ? err.message : "Failed to generate join code",
+      });
+      setTimeout(() => setTeamNotification(null), 4000);
+    } finally {
+      setIsRotatingJoinCode(false);
+    }
+  };
+
+  const handleRevokeJoinCode = async () => {
+    if (!workspaceId) return;
+    setIsRevokingJoinCode(true);
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceId}/join-code`, {
+        method: "DELETE",
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "Failed to revoke join code");
+      }
+      setActiveJoinCode(null);
+      setJoinCodeStatus((prev) => (prev ? { ...prev, enabled: false } : null));
+      setTeamNotification({
+        type: "success",
+        message: "Organization join code revoked. No new applicants can use this code.",
+      });
+      setTimeout(() => setTeamNotification(null), 4000);
+    } catch (err) {
+      setTeamNotification({
+        type: "error",
+        message: err instanceof Error ? err.message : "Failed to revoke join code",
+      });
+      setTimeout(() => setTeamNotification(null), 4000);
+    } finally {
+      setIsRevokingJoinCode(false);
+    }
+  };
+
+  const handleApproveRequest = async () => {
+    if (!workspaceId || !requestToApprove) return;
+    setIsApproving(true);
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceId}/join-requests/${requestToApprove.id}/approve`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ role: approvalRole }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "Failed to approve join request");
+      }
+      setTeamNotification({
+        type: "success",
+        message: `Approved ${requestToApprove.userEmail} as ${ROLE_LABELS[approvalRole]?.label || approvalRole}. Membership active!`,
+      });
+      setTimeout(() => setTeamNotification(null), 5000);
+      setRequestToApprove(null);
+      await loadTeamData();
+    } catch (err) {
+      setTeamNotification({
+        type: "error",
+        message: err instanceof Error ? err.message : "Failed to approve join request",
+      });
+      setTimeout(() => setTeamNotification(null), 4000);
+    } finally {
+      setIsApproving(false);
+    }
+  };
+
+  const handleRejectRequest = async () => {
+    if (!workspaceId || !requestToReject) return;
+    setIsRejecting(true);
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceId}/join-requests/${requestToReject.id}/reject`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason: rejectionReason.trim() || undefined }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "Failed to reject join request");
+      }
+      setTeamNotification({
+        type: "success",
+        message: `Membership request from ${requestToReject.userEmail} declined.`,
+      });
+      setTimeout(() => setTeamNotification(null), 4000);
+      setRequestToReject(null);
+      setRejectionReason("");
+      await loadTeamData();
+    } catch (err) {
+      setTeamNotification({
+        type: "error",
+        message: err instanceof Error ? err.message : "Failed to reject join request",
+      });
+      setTimeout(() => setTeamNotification(null), 4000);
+    } finally {
+      setIsRejecting(false);
+    }
+  };
+
+  const handleSendTestEmail = async () => {
+    if (!workspaceId || !testEmailRecipient.trim()) return;
+    setIsSendingTestEmail(true);
+    setTestEmailResult(null);
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceId}/email/test`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ recipientEmail: testEmailRecipient.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setTestEmailResult({
+          success: false,
+          error: data.error || "Failed to deliver test email",
+        });
+      } else {
+        setTestEmailResult({
+          success: true,
+          message: data.message,
+          provider: data.provider,
+          timestamp: data.timestamp,
+        });
+      }
+    } catch (err) {
+      setTestEmailResult({
+        success: false,
+        error: err instanceof Error ? err.message : "Network error triggering test email",
+      });
+    } finally {
+      setIsSendingTestEmail(false);
+    }
+  };
 
   useEffect(() => {
     if (activeTab === "team") {
@@ -873,6 +1115,316 @@ export default function SettingsPage() {
               </div>
             )}
           </div>
+
+          {/* Organization Join Code Card */}
+          <div className="rounded-xl border border-slate-800/80 bg-slate-900/60 backdrop-blur-md p-6 shadow-xl space-y-4">
+            <div className="pb-3 border-b border-slate-800/80 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-indigo-950/80 border border-indigo-800/60 text-indigo-400 rounded-lg">
+                  <Shield className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white tracking-tight">Organization Join Code</h3>
+                  <p className="text-xs text-slate-400">
+                    Allow authenticated users to request access to this workspace using an authorized join code
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleGenerateJoinCode}
+                  disabled={isRotatingJoinCode}
+                  className="flex items-center gap-1.5"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isRotatingJoinCode ? "animate-spin" : ""}`} />
+                  <span>{joinCodeStatus?.hasActiveCode ? "Rotate Join Code" : "Generate Join Code"}</span>
+                </Button>
+                {joinCodeStatus?.hasActiveCode && joinCodeStatus.enabled && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleRevokeJoinCode}
+                    disabled={isRevokingJoinCode}
+                    className="text-rose-400 hover:text-rose-300 hover:bg-rose-950/40"
+                  >
+                    <span>Revoke Code</span>
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1 text-xs">
+              <div className="p-4 rounded-xl bg-slate-950/60 border border-slate-800 space-y-2">
+                <div className="text-slate-400 font-medium">Join Code Status</div>
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold ${
+                      joinCodeStatus?.hasActiveCode && joinCodeStatus.enabled
+                        ? "bg-emerald-950/80 text-emerald-300 border border-emerald-800/60"
+                        : "bg-slate-800 text-slate-400 border border-slate-700"
+                    }`}
+                  >
+                    <span
+                      className={`w-1.5 h-1.5 rounded-full ${
+                        joinCodeStatus?.hasActiveCode && joinCodeStatus.enabled
+                          ? "bg-emerald-400 animate-pulse"
+                          : "bg-slate-500"
+                      }`}
+                    />
+                    {joinCodeStatus?.hasActiveCode && joinCodeStatus.enabled ? "Active & Accepting Requests" : "Disabled / Inactive"}
+                  </span>
+                  {joinCodeStatus?.updatedAt && (
+                    <span className="text-[11px] text-slate-500 font-mono">
+                      Last rotated {new Date(joinCodeStatus.updatedAt).toLocaleDateString()}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {activeJoinCode ? (
+                <div className="p-4 rounded-xl bg-violet-950/30 border border-violet-500/40 space-y-2">
+                  <div className="flex items-center justify-between text-violet-300 font-semibold">
+                    <span>Generated Code (Copy Now):</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText(activeJoinCode);
+                        setJoinCodeCopied(true);
+                        setTimeout(() => setJoinCodeCopied(false), 2000);
+                      }}
+                      className="text-xs text-violet-400 hover:text-violet-200 underline flex items-center gap-1"
+                    >
+                      {joinCodeCopied ? "Copied!" : "Copy Code"}
+                    </button>
+                  </div>
+                  <div className="text-lg font-mono font-bold tracking-widest text-white bg-slate-950/80 px-3 py-1.5 rounded-lg border border-violet-500/30">
+                    {activeJoinCode}
+                  </div>
+                  <p className="text-[11px] text-violet-300/80">
+                    Only SHA-256 hash is saved. Share this code with new team members to enter at /join-organization.
+                  </p>
+                </div>
+              ) : (
+                <div className="p-4 rounded-xl bg-slate-950/40 border border-slate-800/60 flex items-center justify-center text-slate-500 text-center">
+                  <span>Generate a new join code to distribute to prospective team members.</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Membership Requests Section */}
+          <div className="rounded-xl border border-slate-800/80 bg-slate-900/60 backdrop-blur-md overflow-hidden shadow-xl">
+            <div className="px-6 py-4 border-b border-slate-800/80 flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-bold text-white">Membership Requests ({joinRequests.length})</h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Access requests submitted via organization join code awaiting administrator approval
+                </p>
+              </div>
+              {isLoadingJoinRequests && (
+                <div className="flex items-center gap-1.5 text-xs text-slate-400">
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin text-cyan-400" />
+                  <span>Loading...</span>
+                </div>
+              )}
+            </div>
+
+            {joinRequests.length === 0 ? (
+              <div className="p-8 text-center text-xs text-slate-500">
+                No membership requests submitted for this organization.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="border-b border-slate-800/80 bg-slate-950/40 text-slate-400 font-semibold uppercase tracking-wider text-[10px]">
+                      <th className="py-3 px-6">Applicant</th>
+                      <th className="py-3 px-6">Requested Date</th>
+                      <th className="py-3 px-6">Status</th>
+                      <th className="py-3 px-6">Assigned Role</th>
+                      <th className="py-3 px-6 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/50 text-slate-200">
+                    {joinRequests.map((req) => (
+                      <tr key={req.id} className="hover:bg-slate-800/30 transition-colors">
+                        <td className="py-3.5 px-6">
+                          <div className="font-semibold text-white">{req.userName}</div>
+                          <div className="text-[11px] text-slate-400 font-mono flex items-center gap-1">
+                            <Mail className="w-3 h-3 text-slate-500" />
+                            {req.userEmail}
+                          </div>
+                        </td>
+
+                        <td className="py-3.5 px-6 text-slate-400 font-mono text-[11px]">
+                          {new Date(req.createdAt).toLocaleDateString("en-US", {
+                            year: "numeric",
+                            month: "short",
+                            day: "numeric",
+                          })}
+                        </td>
+
+                        <td className="py-3.5 px-6">
+                          {req.status === "pending" && (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-amber-500/10 text-amber-300 border border-amber-500/30">
+                              <Clock className="w-3 h-3" />
+                              Pending Review
+                            </span>
+                          )}
+                          {req.status === "approved" && (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">
+                              <CheckCircle2 className="w-3 h-3" />
+                              Approved
+                            </span>
+                          )}
+                          {req.status === "rejected" && (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-rose-500/10 text-rose-300 border border-rose-500/30">
+                              Declined
+                            </span>
+                          )}
+                        </td>
+
+                        <td className="py-3.5 px-6">
+                          {req.assignedRole ? (
+                            <span
+                              className={`inline-block px-2 py-0.5 rounded text-[10px] font-medium border ${
+                                ROLE_LABELS[req.assignedRole as ReviewerRole]?.badgeClass || "bg-slate-800 text-slate-300"
+                              }`}
+                            >
+                              {ROLE_LABELS[req.assignedRole as ReviewerRole]?.label || req.assignedRole}
+                            </span>
+                          ) : (
+                            <span className="text-slate-500 text-[11px]">—</span>
+                          )}
+                        </td>
+
+                        <td className="py-3.5 px-6 text-right">
+                          {req.status === "pending" ? (
+                            <div className="flex items-center justify-end gap-2">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setRequestToApprove(req);
+                                  setApprovalRole("compliance_reviewer");
+                                }}
+                                className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs transition-colors cursor-pointer"
+                              >
+                                Approve
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setRequestToReject(req);
+                                  setRejectionReason("");
+                                }}
+                                className="px-2.5 py-1 rounded-lg text-rose-400 hover:text-rose-300 hover:bg-rose-950/40 text-xs border border-transparent hover:border-rose-900/50 transition-all cursor-pointer"
+                              >
+                                Reject
+                              </button>
+                            </div>
+                          ) : (
+                            <span className="text-[11px] text-slate-500 italic">Reviewed</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Approve Join Request Modal */}
+      {requestToApprove && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="bg-[#0e1424] border border-slate-800 rounded-2xl w-full max-w-md p-6 shadow-2xl space-y-4">
+            <h3 className="text-base font-bold text-white tracking-tight">Approve Membership Request</h3>
+            <p className="text-xs text-slate-300">
+              Grant <strong>{requestToApprove.userName}</strong> ({requestToApprove.userEmail}) access to {workspaceName}. Select their regulatory role:
+            </p>
+
+            <div className="space-y-2">
+              <label className="block text-xs font-semibold text-slate-300">Assigned Workspace Role</label>
+              <select
+                value={approvalRole}
+                onChange={(e) => setApprovalRole(e.target.value as ReviewerRole)}
+                className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white"
+              >
+                <option value="compliance_reviewer">Compliance Reviewer</option>
+                <option value="creator">Creator</option>
+                <option value="legal_reviewer">Legal Reviewer</option>
+                <option value="admin">Administrator</option>
+                <option value="viewer">Viewer</option>
+              </select>
+            </div>
+
+            <div className="flex justify-end gap-2.5 pt-3 border-t border-slate-800">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setRequestToApprove(null)}
+                disabled={isApproving}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={handleApproveRequest}
+                disabled={isApproving}
+                className="bg-emerald-600 hover:bg-emerald-500 text-white"
+              >
+                {isApproving ? "Approving..." : "Confirm & Grant Access"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reject Join Request Modal */}
+      {requestToReject && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="bg-[#0e1424] border border-slate-800 rounded-2xl w-full max-w-md p-6 shadow-2xl space-y-4">
+            <h3 className="text-base font-bold text-white tracking-tight">Decline Membership Request</h3>
+            <p className="text-xs text-slate-300">
+              Decline access for <strong>{requestToReject.userName}</strong> ({requestToReject.userEmail}). No workspace membership will be created.
+            </p>
+
+            <div className="space-y-2">
+              <label className="block text-xs font-semibold text-slate-300">Optional Reason for Declining</label>
+              <textarea
+                value={rejectionReason}
+                onChange={(e) => setRejectionReason(e.target.value)}
+                placeholder="e.g. Please use your official corporate domain email address."
+                rows={3}
+                className="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 text-xs text-white placeholder-slate-500"
+              />
+            </div>
+
+            <div className="flex justify-end gap-2.5 pt-3 border-t border-slate-800">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setRequestToReject(null)}
+                disabled={isRejecting}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="danger"
+                size="sm"
+                onClick={handleRejectRequest}
+                disabled={isRejecting}
+              >
+                {isRejecting ? "Declining..." : "Decline Request"}
+              </Button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -972,6 +1524,92 @@ export default function SettingsPage() {
                 <span className="text-slate-400">API Health Diagnostics Route:</span>
                 <span className="font-mono text-emerald-400">/api/health (200 OK)</span>
               </div>
+            </div>
+          </div>
+
+          {/* Outbound Email Diagnostics Tool */}
+          <div className="rounded-xl border border-slate-800/80 bg-slate-900/60 backdrop-blur-md p-6 shadow-xl space-y-4">
+            <div className="pb-3 border-b border-slate-800/80 flex items-center gap-2.5">
+              <div className="p-2 bg-violet-950/80 border border-violet-800/60 text-violet-400 rounded-lg">
+                <Mail className="w-4 h-4" />
+              </div>
+              <div>
+                <h2 className="text-base font-bold text-white tracking-tight">Outbound Email Diagnostic Tool</h2>
+                <p className="text-xs text-slate-400">
+                  Verify active transactional email provider delivery (Gmail SMTP / Resend) to an explicit recipient.
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-4 pt-1 text-xs">
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1.5">
+                  Test Recipient Corporate / QA Email Address
+                </label>
+                <div className="flex flex-col sm:flex-row gap-2.5">
+                  <input
+                    type="email"
+                    value={testEmailRecipient}
+                    onChange={(e) => setTestEmailRecipient(e.target.value)}
+                    placeholder="recipient@example.com"
+                    className="flex-1 px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white font-mono text-xs focus:outline-none focus:border-violet-500"
+                  />
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={handleSendTestEmail}
+                    disabled={isSendingTestEmail || !testEmailRecipient.trim()}
+                    className="flex items-center gap-1.5 shrink-0"
+                  >
+                    {isSendingTestEmail ? (
+                      <>
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        <span>Sending Diagnostic Test...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Mail className="w-3.5 h-3.5" />
+                        <span>Send Test Email</span>
+                      </>
+                    )}
+                  </Button>
+                </div>
+                <p className="text-[11px] text-slate-500 mt-1.5">
+                  Sends a real test email through the active provider (e.g. Gmail SMTP `brandshield11@gmail.com`).
+                </p>
+              </div>
+
+              {testEmailResult && (
+                <div
+                  className={`p-4 rounded-xl border text-xs space-y-1 ${
+                    testEmailResult.success
+                      ? "bg-emerald-950/40 border-emerald-800/60 text-emerald-300"
+                      : "bg-rose-950/40 border-rose-800/60 text-rose-300"
+                  }`}
+                >
+                  <div className="font-semibold flex items-center gap-2">
+                    {testEmailResult.success ? (
+                      <>
+                        <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                        <span>Test Email Dispatched Successfully</span>
+                      </>
+                    ) : (
+                      <>
+                        <AlertTriangle className="w-4 h-4 text-rose-400" />
+                        <span>Diagnostic Test Failed</span>
+                      </>
+                    )}
+                  </div>
+                  <div className="text-[11px] opacity-90">
+                    {testEmailResult.success ? testEmailResult.message : testEmailResult.error}
+                  </div>
+                  {testEmailResult.provider && (
+                    <div className="text-[10px] font-mono text-slate-400 pt-1">
+                      Provider: {testEmailResult.provider.toUpperCase()} · Sent at: {testEmailResult.timestamp}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>

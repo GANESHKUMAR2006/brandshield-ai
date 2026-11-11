@@ -12,11 +12,23 @@ export async function getSupabaseServerClient() {
   try {
     cookieStore = await cookies();
   } catch {
-    // Fallback when called outside of an active Next.js request context (e.g. CLI scripts / tests)
+    // When invoked outside Next.js request scope (e.g. unit/integration test suites, CLI runners),
+    // provide an isolated in-memory cookie jar
+    const inMemoryCookies = new Map<string, { name: string; value: string; options?: CookieOptions }>();
     cookieStore = {
-      getAll: () => [],
-      set: () => {},
-      delete: () => {},
+      getAll() {
+        return Array.from(inMemoryCookies.values()).map((c) => ({ name: c.name, value: c.value }));
+      },
+      set(name: string, value: string, options?: CookieOptions) {
+        if (options && (options.maxAge === 0 || (options.expires && options.expires.getTime() <= 0))) {
+          inMemoryCookies.delete(name);
+        } else {
+          inMemoryCookies.set(name, { name, value, options });
+        }
+      },
+      delete(name: string) {
+        inMemoryCookies.delete(name);
+      },
     };
   }
 

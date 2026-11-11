@@ -4,6 +4,7 @@ import crypto from "crypto";
 import { resolveServerSession, canManageWorkspaceMembers, isValidUUID } from "@/lib/auth/server-session";
 import { query } from "@/lib/db/server-db";
 import { AuditService } from "@/lib/audit/audit-service";
+import { EmailService } from "@/lib/email/email-service";
 import { ReviewerRole } from "@/types";
 
 const inviteSchema = z.object({
@@ -160,6 +161,39 @@ export async function POST(
 
     const createdInvite = insertRes.rows[0];
 
+    // 4. Retrieve workspace name for branded email notification
+    let workspaceName = "Your Workspace";
+    try {
+      const wsRow = await query<{ name: string }>(`SELECT name FROM workspaces WHERE id = $1 LIMIT 1`, [id]);
+      if (wsRow.rows[0]?.name) {
+        workspaceName = wsRow.rows[0].name;
+      }
+    } catch {
+      // fallback
+    }
+
+    // 5. Deliver transactional invitation email
+    let emailDeliveryStatus: { success: boolean; id: string; provider: string } | null = null;
+    let emailWarning: string | null = null;
+
+    try {
+      emailDeliveryStatus = await EmailService.sendInvitationEmail({
+        recipientEmail: normalizedEmail,
+        organizationName: workspaceName,
+        inviterName: session.userName || "Workspace Administrator",
+        inviterEmail: session.userEmail || "admin@brandshield.ai",
+        assignedRole: role,
+        inviteToken: rawToken,
+        expiresAt: createdInvite.expires_at,
+      });
+    } catch (deliveryErr) {
+      // Per requirements: If email delivery fails, preserve the valid pending invitation
+      // and provide the copyable invitation token link so administrator can manually share it.
+      const correlationId = crypto.randomUUID();
+      console.warn(`[POST /api/workspaces/[id]/invitations] Email delivery failure [${correlationId}]:`, deliveryErr);
+      emailWarning = `Email delivery notice: ${deliveryErr instanceof Error ? deliveryErr.message : "Provider failure"}. The invitation was created and you can copy the invitation link below.`;
+    }
+
     // Audit log (never log raw tokens)
     try {
       await AuditService.recordEvent({
@@ -171,7 +205,13 @@ export async function POST(
         entityType: "workspace",
         entityId: createdInvite.id,
         action: "invitation_created",
-        afterState: { email: normalizedEmail, role, expiresAt: createdInvite.expires_at },
+        afterState: {
+          email: normalizedEmail,
+          role,
+          expiresAt: createdInvite.expires_at,
+          emailDeliveryProvider: emailDeliveryStatus?.provider || "failed",
+          emailDelivered: Boolean(emailDeliveryStatus?.success),
+        },
       });
     } catch (auditErr) {
       console.error("[POST /api/workspaces/[id]/invitations] Audit warning:", auditErr);
@@ -180,14 +220,19 @@ export async function POST(
     return NextResponse.json(
       {
         success: true,
-        message: `Invitation successfully dispatched to ${normalizedEmail}`,
+        message: emailWarning
+          ? `Invitation registered for ${normalizedEmail}. ${emailWarning}`
+          : `Invitation successfully dispatched to ${normalizedEmail}`,
+        emailDelivered: Boolean(emailDeliveryStatus?.success),
+        emailWarning: emailWarning || undefined,
         invitation: {
           id: createdInvite.id,
           email: createdInvite.email,
           role: createdInvite.role,
           expiresAt: createdInvite.expires_at,
           createdAt: createdInvite.created_at,
-          inviteToken: rawToken, // Returned strictly once in API response for delivery, never logged
+          inviteToken: rawToken, // Returned strictly once in API response for delivery and manual link copy
+          deliveryProvider: emailDeliveryStatus?.provider || "none",
         },
       },
       { status: 201 }
