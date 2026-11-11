@@ -6,6 +6,7 @@ import { query } from "@/lib/db/server-db";
 const loginSchema = z.object({
   email: z.string().email("Invalid email address"),
   password: z.string().min(1, "Password is required"),
+  rememberMe: z.boolean().optional(),
 });
 
 export async function POST(request: NextRequest) {
@@ -33,8 +34,24 @@ export async function POST(request: NextRequest) {
     }
 
     const { email, password } = validated.data;
-    const supabase = await getSupabaseServerClient();
+    let supabase;
+    try {
+      supabase = await getSupabaseServerClient();
+    } catch {
+      return NextResponse.json(
+        { success: false, error: "Authentication service currently unavailable" },
+        { status: 503 }
+      );
+    }
 
+    // 1. Session Isolation: Cleanly terminate any prior session before authenticating the new identity
+    try {
+      await supabase.auth.signOut({ scope: "local" });
+    } catch {
+      // Ignore if no prior session
+    }
+
+    // 2. Authenticate the new user credentials with Supabase
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
@@ -44,7 +61,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          error: error?.message || "Invalid email or password. Please verify credentials.",
+          error: "Invalid email or password.",
         },
         { status: 401 }
       );
@@ -52,7 +69,7 @@ export async function POST(request: NextRequest) {
 
     const user = data.user;
 
-    // Resolve workspaces from active database memberships
+    // 3. Resolve workspaces strictly from active database memberships for this specific user UUID
     let userWorkspaces: string[] = [];
     try {
       const membershipsRes = await query<{ slug: string }>(
@@ -60,6 +77,7 @@ export async function POST(request: NextRequest) {
          FROM workspace_memberships wm
          JOIN workspaces w ON wm.workspace_id = w.id
          WHERE wm.user_id = $1 AND wm.status = 'active'
+           AND (w.status IS NULL OR w.status != 'archived')
          ORDER BY wm.created_at ASC`,
         [user.id]
       );
@@ -74,7 +92,7 @@ export async function POST(request: NextRequest) {
         : [user.app_metadata.workspaces];
     }
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       success: true,
       message: "Authentication successful",
       user: {
@@ -85,6 +103,24 @@ export async function POST(request: NextRequest) {
         workspaces: userWorkspaces,
       },
     });
+
+    // 4. Multi-Tenant Hygiene: Clean up any stale workspace cookies from a prior account session
+    response.cookies.delete("active_workspace_slug");
+    response.cookies.delete("active_workspace_id");
+    response.cookies.delete("workspace_slug");
+
+    // If newly authenticated user has an active workspace, set active_workspace_slug
+    if (userWorkspaces.length > 0) {
+      response.cookies.set({
+        name: "active_workspace_slug",
+        value: userWorkspaces[0],
+        path: "/",
+        sameSite: "lax",
+        secure: process.env.NODE_ENV === "production",
+      });
+    }
+
+    return response;
   } catch (err) {
     const message = err instanceof Error ? err.message : "Internal authentication error";
     return NextResponse.json(

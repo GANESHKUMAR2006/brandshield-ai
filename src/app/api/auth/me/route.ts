@@ -1,9 +1,30 @@
-import { NextResponse } from "next/server";
-import { resolveServerSession, AuthenticationRequiredError } from "@/lib/auth/server-session";
+import { NextRequest, NextResponse } from "next/server";
+import {
+  resolveAuthenticatedUser,
+  resolveServerSession,
+  AuthenticationRequiredError,
+} from "@/lib/auth/server-session";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const session = await resolveServerSession();
+    // 1. User must come strictly from a verified Supabase server session
+    const authUser = await resolveAuthenticatedUser(request);
+    if (!authUser || !authUser.isAuthenticated) {
+      return NextResponse.json(
+        { success: false, error: "Unauthenticated: No active authenticated session." },
+        { status: 401 }
+      );
+    }
+
+    // 2. Resolve workspace authorization and tenant context
+    const session = await resolveServerSession(undefined, request, { allowNoWorkspace: true });
+
+    if (!session || !session.isAuthenticated || session.isDemoFallback) {
+      return NextResponse.json(
+        { success: false, error: "Unauthenticated: No active authenticated session." },
+        { status: 401 }
+      );
+    }
 
     return NextResponse.json({
       success: true,
@@ -14,8 +35,8 @@ export async function GET() {
         role: session.role,
         workspaceId: session.workspaceId,
         workspaceSlug: session.workspaceSlug,
-        isAuthenticated: session.isAuthenticated,
-        isDemoFallback: session.isDemoFallback,
+        isAuthenticated: true,
+        isDemoFallback: false,
       },
     });
   } catch (err) {

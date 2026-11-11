@@ -3,7 +3,22 @@ import { cookies } from "next/headers";
 import { Database } from "./database.types";
 
 export async function getSupabaseServerClient() {
-  const cookieStore = await cookies();
+  let cookieStore: {
+    getAll: () => { name: string; value: string }[];
+    set: (name: string, value: string, options?: CookieOptions) => void;
+    delete: (name: string) => void;
+  };
+
+  try {
+    cookieStore = await cookies();
+  } catch {
+    // Fallback when called outside of an active Next.js request context (e.g. CLI scripts / tests)
+    cookieStore = {
+      getAll: () => [],
+      set: () => {},
+      delete: () => {},
+    };
+  }
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key =

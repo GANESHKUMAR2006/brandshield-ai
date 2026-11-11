@@ -15,6 +15,7 @@ import {
   FileText,
   LogOut,
   User,
+  UserCheck,
   Shield,
   ChevronDown,
 } from "lucide-react";
@@ -121,8 +122,17 @@ export function TopNav({ onOpenMobileMenu }: TopNavProps) {
     } catch {
       // Proceed with redirection even if network fails
     }
-    router.push("/login");
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("active_workspace_id");
+      localStorage.removeItem("active_workspace_slug");
+    }
+    router.push("/login?switched=true");
     router.refresh();
+  };
+
+  const handleSwitchAccount = async () => {
+    setShowUserMenu(false);
+    await handleSignOut();
   };
 
   return (
@@ -302,6 +312,15 @@ export function TopNav({ onOpenMobileMenu }: TopNavProps) {
                 >
                   <User className="w-3.5 h-3.5 text-slate-400" />
                   <span>Workspace Settings</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleSwitchAccount}
+                  className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800/60 transition-colors text-left cursor-pointer"
+                >
+                  <UserCheck className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>Switch Account</span>
                 </button>
 
                 <button
