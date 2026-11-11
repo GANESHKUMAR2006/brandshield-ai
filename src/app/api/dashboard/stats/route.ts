@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import {
   resolveServerSession,
   AuthenticationRequiredError,
@@ -8,9 +8,9 @@ import {
 import { query } from "@/lib/db/server-db";
 import { ComplianceAnalyticsService } from "@/lib/analytics/analytics-service";
 
-export async function GET() {
+export async function GET(request?: NextRequest) {
   try {
-    const session = await resolveServerSession();
+    const session = await resolveServerSession(undefined, request);
 
     // 1. Fetch comprehensive compliance analytics
     const analytics = await ComplianceAnalyticsService.getWorkspaceAnalytics(session);

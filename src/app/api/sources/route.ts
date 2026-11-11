@@ -9,9 +9,9 @@ import {
 import { query, withTransaction } from "@/lib/db/server-db";
 import { AuditService } from "@/lib/audit/audit-service";
 
-export async function GET() {
+export async function GET(request?: NextRequest) {
   try {
-    const session = await resolveServerSession();
+    const session = await resolveServerSession(undefined, request);
 
     // 1. Fetch Source Documents with current version metadata
     const docsRes = await query(`
@@ -167,7 +167,7 @@ export async function GET() {
 // POST /api/sources - Manage source document lifecycle (upload, approve, reject, expire, supersede)
 export async function POST(request: NextRequest) {
   try {
-    const session = await resolveServerSession();
+    const session = await resolveServerSession(undefined, request);
 
     if (!canReviewClaims(session.role)) {
       return NextResponse.json(

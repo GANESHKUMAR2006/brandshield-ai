@@ -8,7 +8,7 @@ import {
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await resolveServerSession();
+    const session = await resolveServerSession(undefined, request);
 
     const { searchParams } = new URL(request.url);
     const submissionId = searchParams.get("submissionId");

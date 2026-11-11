@@ -25,6 +25,9 @@ export class HybridEvidenceRetriever {
   public static async retrieveEvidence(
     options: EvidenceRetrievalQuery
   ): Promise<RetrievedEvidenceItem[]> {
+    if (!options.workspaceSlug || options.workspaceSlug.trim() === '') {
+      throw new Error('Workspace slug is strictly required for evidence retrieval.');
+    }
     const limit = options.limit || 5;
     const similarityThreshold = options.similarityThreshold || 0.5;
 
@@ -55,7 +58,7 @@ export class HybridEvidenceRetriever {
       JOIN document_versions dv ON dc.document_version_id = dv.id
       JOIN source_documents sd ON dv.source_document_id = sd.id
       JOIN workspaces w ON sd.workspace_id = w.id
-      WHERE w.slug = $2
+      WHERE (w.slug = $2 OR w.id::text = $2)
         AND sd.approval_status = 'approved'
         AND dv.approval_status = 'approved'
         AND dv.superseded_at IS NULL
@@ -200,13 +203,13 @@ export class HybridEvidenceRetriever {
         const stance = RetrievalScorer.evaluateStance(options.claimText, chunk.content);
 
         results.push({
-          id: chunk.stableId,
+          id: chunk.stableId || (chunk as any).id,
           sourceDocumentId: chunk.sourceDocumentId,
           sourceDocumentTitle: chunk.sourceDocumentTitle,
           documentType: chunk.documentType,
           documentVersionId: chunk.documentVersionId,
           versionNumber: chunk.versionNumber,
-          chunkId: chunk.stableId,
+          chunkId: chunk.stableId || (chunk as any).id,
           chunkIndex: chunk.chunkIndex,
           content: chunk.content,
           pageNumber: chunk.pageNumber ?? 1,

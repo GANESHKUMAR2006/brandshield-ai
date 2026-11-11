@@ -158,7 +158,15 @@ export function TopNav({ onOpenMobileMenu }: TopNavProps) {
 
         {/* Desktop Breadcrumb / Workspace Switcher */}
         <div className="hidden lg:flex items-center gap-2.5 text-xs">
-          <WorkspaceSwitcher currentSlug={userInfo.workspaceSlug} />
+          <WorkspaceSwitcher
+            currentSlug={userInfo.workspaceSlug}
+            onWorkspaceChange={(ws) => {
+              setUserInfo((prev) => ({
+                ...prev,
+                workspaceSlug: ws.slug,
+              }));
+            }}
+          />
           <span className="text-slate-600">/</span>
           <span className="text-slate-400 font-medium flex items-center gap-1.5">
             <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 shadow-[0_0_6px_#22d3ee]" />

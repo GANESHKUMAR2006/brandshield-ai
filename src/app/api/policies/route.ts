@@ -9,7 +9,7 @@ import { PolicyService } from "@/lib/policy/policy-service";
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await resolveServerSession();
+    const session = await resolveServerSession(undefined, request);
     const { searchParams } = new URL(request.url);
 
     const category = searchParams.get("category") || undefined;
@@ -46,7 +46,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await resolveServerSession();
+    const session = await resolveServerSession(undefined, request);
     const body = await request.json();
 
     const policy = await PolicyService.createPolicy(session, {

@@ -26,6 +26,35 @@ export interface ResolveSessionOptions {
   allowNoWorkspace?: boolean;
 }
 
+export type WorkspacePermission = "read" | "write" | "admin" | "review" | "publish";
+
+export interface VerifiedWorkspaceContext {
+  userId: string;
+  userName: string;
+  userEmail: string;
+  role: ReviewerRole;
+  workspaceId: string;
+  workspaceSlug: string;
+  workspaceName: string;
+  permissions: Set<WorkspacePermission>;
+}
+
+export const ROLE_PERMISSIONS: Record<ReviewerRole, WorkspacePermission[]> = {
+  admin: ["read", "write", "admin", "review", "publish"],
+  compliance_reviewer: ["read", "write", "review", "publish"],
+  legal_reviewer: ["read", "review"],
+  creator: ["read", "write"],
+  viewer: ["read"],
+};
+
+const VALID_ROLES: ReviewerRole[] = [
+  "admin",
+  "compliance_reviewer",
+  "legal_reviewer",
+  "creator",
+  "viewer",
+];
+
 /**
  * Validates whether an identifier is a standard RFC 4122 UUID.
  * Fails closed on non-string or malformed identifiers (e.g. demo string "usr-01-elena").
@@ -73,18 +102,6 @@ export function validateUserWorkspaceMembership(
   return userWorkspaces.includes(targetWorkspaceSlug);
 }
 
-/**
- * Resolves verified identity, role, and workspace authorization from
- * the server-side session. Client-supplied IDs, roles, and workspaces
- * are strictly ignored and never trusted.
- *
- * Security Model:
- * 1. Production Mode: Fails closed. If a valid Supabase user session cannot
- *    be cryptographically verified, throws AuthenticationRequiredError (HTTP 401).
- *    If user lacks membership to target workspace, throws WorkspaceAccessError (HTTP 403).
- * 2. Development/Demo Mode: Isolated fallback to CURRENT_USER strictly when
- *    NODE_ENV !== "production" and NEXT_PUBLIC_APP_ENV !== "production".
- */
 let testSessionOverride: ServerSessionIdentity | Error | null | undefined = undefined;
 
 /**
@@ -99,6 +116,10 @@ export function __setTestSessionOverride(session: ServerSessionIdentity | Error 
     throw new Error("Test session override is strictly prohibited in production.");
   }
   testSessionOverride = session;
+}
+
+export function getTestSessionOverride(): ServerSessionIdentity | Error | null | undefined {
+  return testSessionOverride;
 }
 
 /**
@@ -163,44 +184,82 @@ export async function resolveAuthenticatedUser(
   }
 }
 
-export async function resolveServerSession(
-  targetWorkspaceSlug?: string,
-  request?: NextRequest | Request,
-  options?: ResolveSessionOptions
-): Promise<ServerSessionIdentity> {
+/**
+ * Resolves target workspace identifier from explicit argument, request headers,
+ * or cookies in that strict precedence order.
+ */
+export async function resolveTargetWorkspaceIdentifier(
+  targetWorkspaceIdOrSlug?: string,
+  request?: NextRequest | Request
+): Promise<string | undefined> {
+  if (targetWorkspaceIdOrSlug && targetWorkspaceIdOrSlug.trim() !== "") {
+    return targetWorkspaceIdOrSlug.trim();
+  }
+
+  // 1. Check HTTP headers if request object is provided
+  if (request && "headers" in request) {
+    const headerSlug =
+      request.headers.get("x-workspace-slug") ||
+      request.headers.get("x-workspace-id");
+    if (headerSlug && headerSlug.trim() !== "") {
+      return headerSlug.trim();
+    }
+  }
+
+  // 2. Check Next.js request context (headers & cookies)
+  try {
+    const { headers: getHeaders, cookies: getCookies } = await import("next/headers");
+    const headerList = await getHeaders();
+    const headerSlug =
+      headerList.get("x-workspace-slug") ||
+      headerList.get("x-workspace-id");
+    if (headerSlug && headerSlug.trim() !== "") {
+      return headerSlug.trim();
+    }
+
+    const cookieStore = await getCookies();
+    const cookieSlug =
+      cookieStore.get("active_workspace_slug")?.value ||
+      cookieStore.get("active_workspace_id")?.value ||
+      cookieStore.get("workspace_slug")?.value;
+    if (cookieSlug && cookieSlug.trim() !== "") {
+      return cookieSlug.trim();
+    }
+  } catch {
+    // Outside of Next.js server request context
+  }
+
+  return undefined;
+}
+
+/**
+ * Centralized Tenant Authorization Boundary: requireWorkspaceAccess
+ * 
+ * Verifies that the caller has an active, legitimate membership in the target workspace.
+ * Fails closed with WorkspaceAccessError (HTTP 403) if the user does not belong to the workspace.
+ * Validates role permissions when requiredPermission is specified.
+ */
+export async function requireWorkspaceAccess(
+  targetWorkspaceIdOrSlug?: string,
+  requiredPermission?: WorkspacePermission,
+  request?: NextRequest | Request
+): Promise<VerifiedWorkspaceContext> {
   const isProduction =
     process.env.NODE_ENV === "production" ||
     process.env.NEXT_PUBLIC_APP_ENV === "production";
 
-  // Attempt to resolve target workspace from request argument, headers, or cookies
-  let requestedSlug = targetWorkspaceSlug;
-  if (!requestedSlug) {
-    if (request && "headers" in request) {
-      requestedSlug =
-        request.headers.get("x-workspace-slug") ||
-        request.headers.get("x-workspace-id") ||
-        undefined;
-    }
-    if (!requestedSlug) {
-      try {
-        const { headers: getHeaders, cookies: getCookies } = await import("next/headers");
-        const headerList = await getHeaders();
-        const headerSlug = headerList.get("x-workspace-slug") || headerList.get("x-workspace-id");
-        if (headerSlug) {
-          requestedSlug = headerSlug;
-        } else {
-          const cookieStore = await getCookies();
-          const cookieSlug = cookieStore.get("active_workspace_slug")?.value || cookieStore.get("workspace_slug")?.value;
-          if (cookieSlug) {
-            requestedSlug = cookieSlug;
-          }
-        }
-      } catch {
-        // Outside of Next.js server request context (e.g. background job, test harness)
-      }
-    }
-  }
+  const allowDemoAuth =
+    process.env.ALLOW_DEMO_AUTH === "true" ||
+    process.env.NEXT_PUBLIC_ALLOW_DEMO_AUTH === "true" ||
+    process.env.NEXT_PUBLIC_APP_ENV === "demo" ||
+    process.env.NEXT_PUBLIC_APP_ENV === "preview";
 
+  const requestedTarget = await resolveTargetWorkspaceIdentifier(
+    targetWorkspaceIdOrSlug,
+    request
+  );
+
+  // Check test session override (strictly allowed in non-production test environments)
   if (!isProduction && testSessionOverride !== undefined) {
     if (testSessionOverride === null) {
       throw new AuthenticationRequiredError(
@@ -211,295 +270,373 @@ export async function resolveServerSession(
       throw testSessionOverride;
     }
 
-    // When a specific target workspace is requested (e.g. via header/cookie),
-    // verify the authenticated test user actually has active membership in that workspace
     if (
-      requestedSlug &&
-      requestedSlug !== testSessionOverride.workspaceSlug &&
-      requestedSlug !== testSessionOverride.workspaceId
+      requestedTarget &&
+      requestedTarget !== testSessionOverride.workspaceSlug &&
+      requestedTarget !== testSessionOverride.workspaceId
     ) {
       let memberRes;
       try {
-        memberRes = await query<{ role: string; workspace_id: string; slug: string }>(
-          `SELECT wm.role, w.id as workspace_id, w.slug 
+        memberRes = await query<{
+          role: string;
+          workspace_id: string;
+          workspace_name: string;
+          slug: string;
+        }>(
+          `SELECT wm.role, w.id as workspace_id, w.name as workspace_name, w.slug 
            FROM workspace_memberships wm
            JOIN workspaces w ON wm.workspace_id = w.id
            WHERE wm.user_id = $1 AND (w.slug = $2 OR w.id::text = $2) AND wm.status = 'active'
              AND (w.status IS NULL OR w.status != 'archived')
            LIMIT 1`,
-          [testSessionOverride.userId, requestedSlug]
+          [testSessionOverride.userId, requestedTarget]
         );
       } catch (err: any) {
-        if (err?.code === '42703' || String(err?.message).includes('status')) {
-          memberRes = await query<{ role: string; workspace_id: string; slug: string }>(
-            `SELECT wm.role, w.id as workspace_id, w.slug 
+        if (err?.code === "42703" || String(err?.message).includes("status")) {
+          memberRes = await query<{
+            role: string;
+            workspace_id: string;
+            workspace_name: string;
+            slug: string;
+          }>(
+            `SELECT wm.role, w.id as workspace_id, w.name as workspace_name, w.slug 
              FROM workspace_memberships wm
              JOIN workspaces w ON wm.workspace_id = w.id
              WHERE wm.user_id = $1 AND (w.slug = $2 OR w.id::text = $2) AND wm.status = 'active'
              LIMIT 1`,
-            [testSessionOverride.userId, requestedSlug]
+            [testSessionOverride.userId, requestedTarget]
           );
         } else {
           throw err;
         }
       }
+
       if (!memberRes || memberRes.rows.length === 0) {
         throw new WorkspaceAccessError(
-          `Forbidden: User "${testSessionOverride.userId}" does not have active membership in workspace "${requestedSlug}".`
+          `Forbidden: User "${testSessionOverride.userId}" does not have active membership in workspace "${requestedTarget}".`
         );
       }
+
+      const row = memberRes.rows[0];
+      const role = VALID_ROLES.includes(row.role as ReviewerRole)
+        ? (row.role as ReviewerRole)
+        : testSessionOverride.role;
+      const perms = new Set<WorkspacePermission>(ROLE_PERMISSIONS[role] || ["read"]);
+
+      if (requiredPermission && !perms.has(requiredPermission)) {
+        throw new UnauthorizedRoleError(role, requiredPermission);
+      }
+
       return {
-        ...testSessionOverride,
-        workspaceId: memberRes.rows[0].workspace_id,
-        workspaceSlug: memberRes.rows[0].slug,
-        role: (memberRes.rows[0].role as ReviewerRole) || testSessionOverride.role,
+        userId: testSessionOverride.userId,
+        userName: testSessionOverride.userName,
+        userEmail: testSessionOverride.userEmail,
+        role,
+        workspaceId: row.workspace_id,
+        workspaceSlug: (row as any).slug || (row as any).workspace_slug || requestedTarget || "",
+        workspaceName: (row as any).workspace_name || (row as any).name || (row as any).slug || "Workspace",
+        permissions: perms,
       };
     }
 
-    return testSessionOverride;
+    const perms = new Set<WorkspacePermission>(ROLE_PERMISSIONS[testSessionOverride.role] || ["read"]);
+    if (requiredPermission && !perms.has(requiredPermission)) {
+      throw new UnauthorizedRoleError(testSessionOverride.role, requiredPermission);
+    }
+
+    return {
+      userId: testSessionOverride.userId,
+      userName: testSessionOverride.userName,
+      userEmail: testSessionOverride.userEmail,
+      role: testSessionOverride.role,
+      workspaceId: testSessionOverride.workspaceId,
+      workspaceSlug: testSessionOverride.workspaceSlug,
+      workspaceName: "Test Workspace",
+      permissions: perms,
+    };
   }
 
-  const validRoles: ReviewerRole[] = [
-    "admin",
-    "compliance_reviewer",
-    "legal_reviewer",
-    "creator",
-    "viewer",
-  ];
+  // 1. Resolve real authenticated user
+  const user = await resolveAuthenticatedUser(request);
 
-  try {
-    const supabase = await getSupabaseServerClient();
-    const { data: { user } } = await supabase.auth.getUser();
-
-    if (user) {
-      // 1. Check database workspace_memberships first for real multi-tenant roles & workspaces
-      try {
-        let memberRes;
-        try {
-          if (requestedSlug) {
-            memberRes = await query<{
-              role: string;
-              workspace_id: string;
-              slug: string;
-            }>(
-              `SELECT wm.role, w.id as workspace_id, w.slug 
-               FROM workspace_memberships wm
-               JOIN workspaces w ON wm.workspace_id = w.id
-               WHERE wm.user_id = $1 AND (w.slug = $2 OR w.id::text = $2) AND wm.status = 'active'
-                 AND (w.status IS NULL OR w.status != 'archived')
-               LIMIT 1`,
-              [user.id, requestedSlug]
-            );
-          } else {
-            // Resolve primary active workspace membership for authenticated user
-            memberRes = await query<{
-              role: string;
-              workspace_id: string;
-              slug: string;
-            }>(
-              `SELECT wm.role, w.id as workspace_id, w.slug 
-               FROM workspace_memberships wm
-               JOIN workspaces w ON wm.workspace_id = w.id
-               WHERE wm.user_id = $1 AND wm.status = 'active'
-                 AND (w.status IS NULL OR w.status != 'archived')
-               ORDER BY wm.created_at ASC
-               LIMIT 1`,
-              [user.id]
-            );
-          }
-        } catch (dbErr: any) {
-          // Graceful fallback if status column does not exist on workspaces table yet
-          if (dbErr?.code === '42703' || String(dbErr?.message).includes('status')) {
-            if (requestedSlug) {
-              memberRes = await query<{
-                role: string;
-                workspace_id: string;
-                slug: string;
-              }>(
-                `SELECT wm.role, w.id as workspace_id, w.slug 
-                 FROM workspace_memberships wm
-                 JOIN workspaces w ON wm.workspace_id = w.id
-                 WHERE wm.user_id = $1 AND (w.slug = $2 OR w.id::text = $2) AND wm.status = 'active'
-                 LIMIT 1`,
-                [user.id, requestedSlug]
-              );
-            } else {
-              memberRes = await query<{
-                role: string;
-                workspace_id: string;
-                slug: string;
-              }>(
-                `SELECT wm.role, w.id as workspace_id, w.slug 
-                 FROM workspace_memberships wm
-                 JOIN workspaces w ON wm.workspace_id = w.id
-                 WHERE wm.user_id = $1 AND wm.status = 'active'
-                 ORDER BY wm.created_at ASC
-                 LIMIT 1`,
-                [user.id]
-              );
-            }
-          } else {
-            throw dbErr;
-          }
-        }
-
-        if (memberRes && memberRes.rows.length > 0) {
-          const row = memberRes.rows[0];
-          const memberRole = validRoles.includes(row.role as ReviewerRole)
-            ? (row.role as ReviewerRole)
-            : "compliance_reviewer";
-
-          return {
-            userId: user.id,
-            userName: user.user_metadata?.name || user.email || "Verified Member",
-            userEmail: user.email || "",
-            role: memberRole,
-            workspaceId: row.workspace_id,
-            workspaceSlug: row.slug,
-            isAuthenticated: true,
-            isDemoFallback: false,
-          };
-        }
-      } catch {
-        // Continue to app_metadata check if DB query fails during initialization
+  if (user) {
+    let memberRes;
+    try {
+      if (requestedTarget) {
+        memberRes = await query<{
+          role: string;
+          workspace_id: string;
+          workspace_name: string;
+          slug: string;
+        }>(
+          `SELECT wm.role, w.id as workspace_id, w.name as workspace_name, w.slug 
+           FROM workspace_memberships wm
+           JOIN workspaces w ON wm.workspace_id = w.id
+           WHERE wm.user_id = $1 AND (w.slug = $2 OR w.id::text = $2) AND wm.status = 'active'
+             AND (w.status IS NULL OR w.status != 'archived')
+           LIMIT 1`,
+          [user.id, requestedTarget]
+        );
+      } else {
+        memberRes = await query<{
+          role: string;
+          workspace_id: string;
+          workspace_name: string;
+          slug: string;
+        }>(
+          `SELECT wm.role, w.id as workspace_id, w.name as workspace_name, w.slug 
+           FROM workspace_memberships wm
+           JOIN workspaces w ON wm.workspace_id = w.id
+           WHERE wm.user_id = $1 AND wm.status = 'active'
+             AND (w.status IS NULL OR w.status != 'archived')
+           ORDER BY wm.created_at ASC
+           LIMIT 1`,
+          [user.id]
+        );
       }
-
-      // 2. Fall back to server-controlled app_metadata (e.g. for seed reviewers)
-      const rawRole = (user.app_metadata?.role || "compliance_reviewer") as string;
-      const role: ReviewerRole = validRoles.includes(rawRole as ReviewerRole)
-        ? (rawRole as ReviewerRole)
-        : "compliance_reviewer";
-
-      const rawWorkspaces: unknown = user.app_metadata?.workspaces ?? user.app_metadata?.workspace_slug;
-      const userWorkspaces: string[] = Array.isArray(rawWorkspaces)
-        ? (rawWorkspaces as string[])
-        : typeof rawWorkspaces === "string"
-        ? [rawWorkspaces]
-        : [];
-
-      let effectiveSlug = requestedSlug;
-      if (effectiveSlug) {
-        if (userWorkspaces.length > 0) {
-          const isMember = validateUserWorkspaceMembership(userWorkspaces, effectiveSlug);
-          if (!isMember) {
-            throw new WorkspaceAccessError(
-              `Forbidden: User "${user.id}" does not belong to requested workspace "${effectiveSlug}".`
-            );
-          }
+    } catch (err: any) {
+      if (err?.code === "42703" || String(err?.message).includes("status")) {
+        if (requestedTarget) {
+          memberRes = await query<{
+            role: string;
+            workspace_id: string;
+            workspace_name: string;
+            slug: string;
+          }>(
+            `SELECT wm.role, w.id as workspace_id, w.name as workspace_name, w.slug 
+             FROM workspace_memberships wm
+             JOIN workspaces w ON wm.workspace_id = w.id
+             WHERE wm.user_id = $1 AND (w.slug = $2 OR w.id::text = $2) AND wm.status = 'active'
+             LIMIT 1`,
+            [user.id, requestedTarget]
+          );
         } else {
-          throw new WorkspaceAccessError(
-            `Forbidden: User "${user.id}" does not have active membership in workspace "${effectiveSlug}".`
+          memberRes = await query<{
+            role: string;
+            workspace_id: string;
+            workspace_name: string;
+            slug: string;
+          }>(
+            `SELECT wm.role, w.id as workspace_id, w.name as workspace_name, w.slug 
+             FROM workspace_memberships wm
+             JOIN workspaces w ON wm.workspace_id = w.id
+             WHERE wm.user_id = $1 AND wm.status = 'active'
+             ORDER BY wm.created_at ASC
+             LIMIT 1`,
+            [user.id]
           );
         }
-      } else if (userWorkspaces.length > 0) {
-        effectiveSlug = userWorkspaces[0];
-      } else if (options?.allowNoWorkspace) {
-        // Authenticated user with no workspace memberships allowed for workspace creation flows
-        return {
-          userId: user.id,
-          userName: user.user_metadata?.name || user.email || "Verified Member",
-          userEmail: user.email || "",
-          role: "admin",
-          workspaceId: "",
-          workspaceSlug: "",
-          isAuthenticated: true,
-          isDemoFallback: false,
-        };
       } else {
-        throw new WorkspaceAccessError(
-          `Forbidden: User "${user.id}" does not belong to any authorized workspace.`
-        );
+        throw err;
       }
+    }
 
-      // Query real workspace ID for the target slug
-      let resolvedWorkspaceId: string | null = null;
-      try {
-        const wsRes = await query<{ id: string }>(
-          `SELECT id FROM workspaces WHERE slug = $1 AND (status IS NULL OR status != 'archived') LIMIT 1`,
-          [effectiveSlug]
-        );
-        if (wsRes.rows.length > 0) {
-          resolvedWorkspaceId = wsRes.rows[0].id;
-        }
-      } catch (wsErr: any) {
-        if (wsErr?.code === '42703' || String(wsErr?.message).includes('status')) {
-          try {
-            const wsRes = await query<{ id: string }>(
-              `SELECT id FROM workspaces WHERE slug = $1 LIMIT 1`,
-              [effectiveSlug]
-            );
-            if (wsRes.rows.length > 0) {
-              resolvedWorkspaceId = wsRes.rows[0].id;
-            }
-          } catch {
-            // Continue with null if query fails
-          }
-        }
-      }
+    if (memberRes && memberRes.rows.length > 0) {
+      const row = memberRes.rows[0];
+      const role: ReviewerRole = VALID_ROLES.includes(row.role as ReviewerRole)
+        ? (row.role as ReviewerRole)
+        : "compliance_reviewer";
 
-      if (!resolvedWorkspaceId) {
-        throw new WorkspaceAccessError(
-          `Workspace "${effectiveSlug}" could not be resolved.`
-        );
+      const perms = new Set<WorkspacePermission>(ROLE_PERMISSIONS[role] || ["read"]);
+      if (requiredPermission && !perms.has(requiredPermission)) {
+        throw new UnauthorizedRoleError(role, requiredPermission);
       }
 
       return {
         userId: user.id,
-        userName: user.user_metadata?.name || user.email || "Verified Reviewer",
+        userName: user.name || "Verified Member",
         userEmail: user.email || "",
         role,
-        workspaceId: resolvedWorkspaceId,
-        workspaceSlug: effectiveSlug,
-        isAuthenticated: true,
-        isDemoFallback: false,
+        workspaceId: row.workspace_id,
+        workspaceSlug: (row as any).slug || (row as any).workspace_slug || requestedTarget || "",
+        workspaceName: (row as any).workspace_name || (row as any).name || (row as any).slug || "Workspace",
+        permissions: perms,
       };
     }
-  } catch (err) {
-    if (err instanceof WorkspaceAccessError) {
-      throw err;
-    }
-    const allowDemoAuth =
-      process.env.ALLOW_DEMO_AUTH === "true" ||
-      process.env.NEXT_PUBLIC_ALLOW_DEMO_AUTH === "true" ||
-      process.env.NEXT_PUBLIC_APP_ENV === "demo" ||
-      process.env.NEXT_PUBLIC_APP_ENV === "preview";
 
-    if (isProduction && !allowDemoAuth) {
-      throw new AuthenticationRequiredError(
-        `Production authentication failure: Unable to verify user session (${err instanceof Error ? err.message : "Unknown error"}).`
-      );
+    // Check app_metadata fallback if DB query returned 0 rows (e.g. for seed accounts)
+    try {
+      const supabase = await getSupabaseServerClient();
+      const { data: { user: sbUser } } = await supabase.auth.getUser();
+      if (sbUser) {
+        const rawWorkspaces: unknown = sbUser.app_metadata?.workspaces ?? sbUser.app_metadata?.workspace_slug;
+        const userWorkspaces: string[] = Array.isArray(rawWorkspaces)
+          ? (rawWorkspaces as string[])
+          : typeof rawWorkspaces === "string"
+          ? [rawWorkspaces]
+          : [];
+
+        let effectiveSlug = requestedTarget;
+        if (effectiveSlug) {
+          if (userWorkspaces.length > 0) {
+            const isMember = validateUserWorkspaceMembership(userWorkspaces, effectiveSlug);
+            if (!isMember) {
+              throw new WorkspaceAccessError(
+                `Forbidden: User "${user.id}" does not belong to requested workspace "${effectiveSlug}".`
+              );
+            }
+          } else {
+            throw new WorkspaceAccessError(
+              `Forbidden: User "${user.id}" does not have active membership in workspace "${effectiveSlug}".`
+            );
+          }
+        } else if (userWorkspaces.length > 0) {
+          effectiveSlug = userWorkspaces[0];
+        } else {
+          throw new WorkspaceAccessError(
+            `Forbidden: User "${user.id}" does not belong to any authorized workspace.`
+          );
+        }
+
+        let resolvedWorkspaceId: string | null = null;
+        let resolvedWorkspaceName = effectiveSlug;
+        const wsRes = await query<{ id: string; name: string }>(
+          `SELECT id, name FROM workspaces WHERE slug = $1 AND (status IS NULL OR status != 'archived') LIMIT 1`,
+          [effectiveSlug]
+        );
+        if (wsRes.rows.length > 0) {
+          resolvedWorkspaceId = wsRes.rows[0].id;
+          resolvedWorkspaceName = wsRes.rows[0].name;
+        }
+
+        if (!resolvedWorkspaceId) {
+          throw new WorkspaceAccessError(
+            `Workspace "${effectiveSlug}" could not be resolved.`
+          );
+        }
+
+        const rawRole = (sbUser.app_metadata?.role || "compliance_reviewer") as string;
+        const role: ReviewerRole = VALID_ROLES.includes(rawRole as ReviewerRole)
+          ? (rawRole as ReviewerRole)
+          : "compliance_reviewer";
+
+        const perms = new Set<WorkspacePermission>(ROLE_PERMISSIONS[role] || ["read"]);
+        if (requiredPermission && !perms.has(requiredPermission)) {
+          throw new UnauthorizedRoleError(role, requiredPermission);
+        }
+
+        return {
+          userId: user.id,
+          userName: user.name || "Verified Reviewer",
+          userEmail: user.email || "",
+          role,
+          workspaceId: resolvedWorkspaceId,
+          workspaceSlug: effectiveSlug,
+          workspaceName: resolvedWorkspaceName,
+          permissions: perms,
+        };
+      }
+    } catch (sbErr) {
+      if (sbErr instanceof WorkspaceAccessError || sbErr instanceof UnauthorizedRoleError) {
+        throw sbErr;
+      }
     }
+
+    throw new WorkspaceAccessError(
+      `Forbidden: User "${user.id}" does not have active membership in workspace "${requestedTarget || "primary"}".`
+    );
   }
 
-  // Production Gate: Fail closed unless demo showcase authentication is explicitly enabled
-  const allowDemoAuth =
-    process.env.ALLOW_DEMO_AUTH === "true" ||
-    process.env.NEXT_PUBLIC_ALLOW_DEMO_AUTH === "true" ||
-    process.env.NEXT_PUBLIC_APP_ENV === "demo" ||
-    process.env.NEXT_PUBLIC_APP_ENV === "preview";
-
+  // Fails closed in production
   if (isProduction && !allowDemoAuth) {
     throw new AuthenticationRequiredError(
       "Production authentication failure: No valid authenticated Supabase session found. Anonymous execution is prohibited in production."
     );
   }
 
-  // Development/Test Mode Only: Validate target workspace for demo identity
-  if (requestedSlug && requestedSlug !== DERMAGLOW_WORKSPACE_SLUG) {
-    throw new WorkspaceAccessError(
-      `Forbidden: Development demo identity is restricted to "${DERMAGLOW_WORKSPACE_SLUG}". Access to "${requestedSlug}" is denied.`
-    );
+  // Development/Test Mode Only: Demo fallback
+  if (allowDemoAuth || !isProduction) {
+    if (
+      requestedTarget &&
+      requestedTarget !== DERMAGLOW_WORKSPACE_SLUG &&
+      requestedTarget !== DERMAGLOW_WORKSPACE_ID
+    ) {
+      throw new WorkspaceAccessError(
+        `Forbidden: Development demo identity is restricted to "${DERMAGLOW_WORKSPACE_SLUG}". Access to "${requestedTarget}" is denied.`
+      );
+    }
+
+    const role: ReviewerRole = "compliance_reviewer";
+    const perms = new Set<WorkspacePermission>(ROLE_PERMISSIONS[role]);
+    if (requiredPermission && !perms.has(requiredPermission)) {
+      throw new UnauthorizedRoleError(role, requiredPermission);
+    }
+
+    return {
+      userId: CURRENT_USER.id,
+      userName: CURRENT_USER.name,
+      userEmail: CURRENT_USER.email,
+      role,
+      workspaceId: DERMAGLOW_WORKSPACE_ID,
+      workspaceSlug: DERMAGLOW_WORKSPACE_SLUG,
+      workspaceName: "DermaGlow Demo",
+      permissions: perms,
+    };
   }
 
+  throw new AuthenticationRequiredError(
+    "Authentication required: A valid authenticated session must be established."
+  );
+}
+
+/**
+ * Resolves verified identity, role, and workspace authorization from
+ * the server-side session. Client-supplied IDs, roles, and workspaces
+ * are strictly ignored and never trusted.
+ */
+export async function resolveServerSession(
+  targetWorkspaceSlug?: string,
+  request?: NextRequest | Request,
+  options?: ResolveSessionOptions
+): Promise<ServerSessionIdentity> {
+  const isProduction =
+    process.env.NODE_ENV === "production" ||
+    process.env.NEXT_PUBLIC_APP_ENV === "production";
+
+  // When allowNoWorkspace is requested (e.g. for workspace creation flow)
+  if (options?.allowNoWorkspace) {
+    const user = await resolveAuthenticatedUser(request);
+    if (user) {
+      try {
+        const ctx = await requireWorkspaceAccess(targetWorkspaceSlug, undefined, request);
+        return {
+          userId: ctx.userId,
+          userName: ctx.userName,
+          userEmail: ctx.userEmail,
+          role: ctx.role,
+          workspaceId: ctx.workspaceId,
+          workspaceSlug: ctx.workspaceSlug,
+          isAuthenticated: true,
+          isDemoFallback: false,
+        };
+      } catch (err) {
+        if (err instanceof WorkspaceAccessError) {
+          return {
+            userId: user.id,
+            userName: user.name || "Verified Member",
+            userEmail: user.email || "",
+            role: "admin",
+            workspaceId: "",
+            workspaceSlug: "",
+            isAuthenticated: true,
+            isDemoFallback: false,
+          };
+        }
+        throw err;
+      }
+    }
+  }
+
+  const ctx = await requireWorkspaceAccess(targetWorkspaceSlug, undefined, request);
   return {
-    userId: CURRENT_USER.id,
-    userName: CURRENT_USER.name,
-    userEmail: CURRENT_USER.email,
-    role: "compliance_reviewer",
-    workspaceId: DERMAGLOW_WORKSPACE_ID,
-    workspaceSlug: DERMAGLOW_WORKSPACE_SLUG,
-    isAuthenticated: false,
-    isDemoFallback: true,
+    userId: ctx.userId,
+    userName: ctx.userName,
+    userEmail: ctx.userEmail,
+    role: ctx.role,
+    workspaceId: ctx.workspaceId,
+    workspaceSlug: ctx.workspaceSlug,
+    isAuthenticated: ctx.userId !== CURRENT_USER.id,
+    isDemoFallback: ctx.userId === CURRENT_USER.id,
   };
 }
 

@@ -22,7 +22,7 @@ const submitDecisionSchema = z.object({
 // GET /api/reviews - Fetch prioritized review queue
 export async function GET(request: NextRequest) {
   try {
-    const session = await resolveServerSession();
+    const session = await resolveServerSession(undefined, request);
     const { searchParams } = new URL(request.url);
 
     const riskLevel = searchParams.get("riskLevel") || undefined;
@@ -72,7 +72,7 @@ export async function GET(request: NextRequest) {
 // POST /api/reviews - Submit human review decision
 export async function POST(request: NextRequest) {
   try {
-    const session = await resolveServerSession();
+    const session = await resolveServerSession(undefined, request);
 
     let body: unknown;
     try {

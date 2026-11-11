@@ -1,8 +1,8 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { Building2, ChevronDown, Check, Plus, Shield } from "lucide-react";
-import { fetchWorkspaces, WorkspaceItem } from "@/lib/api-client";
+import { Building2, ChevronDown, Check, Plus, Loader2 } from "lucide-react";
+import { fetchWorkspaces, switchWorkspace, WorkspaceItem } from "@/lib/api-client";
 import { CreateOrganizationModal } from "./CreateOrganizationModal";
 
 interface WorkspaceSwitcherProps {
@@ -17,6 +17,7 @@ export function WorkspaceSwitcher({
   const [workspaces, setWorkspaces] = useState<WorkspaceItem[]>([]);
   const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceItem | null>(null);
   const [isOpen, setIsOpen] = useState(false);
+  const [isSwitching, setIsSwitching] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -24,7 +25,13 @@ export function WorkspaceSwitcher({
     try {
       const data = await fetchWorkspaces();
       setWorkspaces(data);
-      const active = data.find((w) => w.slug === currentSlug) || data[0] || null;
+      // Check stored preference first, then currentSlug prop, then default to first
+      let preferredSlug = currentSlug;
+      if (typeof window !== "undefined") {
+        const stored = localStorage.getItem("active_workspace_slug");
+        if (stored) preferredSlug = stored;
+      }
+      const active = data.find((w) => w.slug === preferredSlug) || data.find((w) => w.slug === currentSlug) || data[0] || null;
       setActiveWorkspace(active);
     } catch {
       // Fallback workspace
@@ -56,20 +63,30 @@ export function WorkspaceSwitcher({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const handleSelectWorkspace = (ws: WorkspaceItem) => {
-    setActiveWorkspace(ws);
-    setIsOpen(false);
-    if (typeof window !== "undefined") {
-      localStorage.setItem("active_workspace_slug", ws.slug);
-      localStorage.setItem("active_workspace_id", ws.id);
+  const handleSelectWorkspace = async (ws: WorkspaceItem) => {
+    if (activeWorkspace?.id === ws.id) {
+      setIsOpen(false);
+      return;
     }
-    if (onWorkspaceChange) {
-      onWorkspaceChange(ws);
+    setIsSwitching(true);
+    setIsOpen(false);
+    try {
+      await switchWorkspace({ id: ws.id, slug: ws.slug });
+      setActiveWorkspace(ws);
+      if (onWorkspaceChange) {
+        onWorkspaceChange(ws);
+      }
+      // Force clean reload to refresh all server-rendered components, queries, and client state
+      if (typeof window !== "undefined") {
+        window.location.reload();
+      }
+    } catch (err) {
+      console.error("[WorkspaceSwitcher] Failed to switch workspace:", err);
+      setIsSwitching(false);
     }
   };
 
-  const handleWorkspaceCreated = (newWs: { id: string; name: string; slug: string }) => {
-    loadWorkspaces();
+  const handleWorkspaceCreated = async (newWs: { id: string; name: string; slug: string }) => {
     const item: WorkspaceItem = {
       id: newWs.id,
       name: newWs.name,
@@ -79,21 +96,26 @@ export function WorkspaceSwitcher({
       createdAt: new Date().toISOString(),
       memberCount: 1,
     };
-    handleSelectWorkspace(item);
+    await handleSelectWorkspace(item);
   };
 
   return (
     <div className="relative" ref={dropdownRef}>
       <button
         type="button"
+        disabled={isSwitching}
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-2 px-2.5 py-1 bg-slate-900/80 hover:bg-slate-850 border border-slate-800 hover:border-slate-700 rounded-lg text-slate-300 transition-all cursor-pointer group"
+        className="flex items-center gap-2 px-2.5 py-1 bg-slate-900/80 hover:bg-slate-850 border border-slate-800 hover:border-slate-700 rounded-lg text-slate-300 transition-all cursor-pointer group disabled:opacity-60 disabled:cursor-wait"
         aria-label="Switch organization workspace"
       >
-        <Building2 className="w-3.5 h-3.5 text-violet-400 group-hover:text-violet-300 transition-colors" />
+        {isSwitching ? (
+          <Loader2 className="w-3.5 h-3.5 text-violet-400 animate-spin" />
+        ) : (
+          <Building2 className="w-3.5 h-3.5 text-violet-400 group-hover:text-violet-300 transition-colors" />
+        )}
         <span className="text-[11px] text-slate-400 hidden sm:inline">Workspace:</span>
         <strong className="text-xs text-white font-semibold tracking-tight">
-          {activeWorkspace?.name || "DermaGlow"}
+          {isSwitching ? "Switching..." : activeWorkspace?.name || "DermaGlow"}
         </strong>
         <ChevronDown
           className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-200 ${
@@ -148,14 +170,14 @@ export function WorkspaceSwitcher({
             })}
           </div>
 
-          <div className="pt-1.5 mt-1 border-t border-slate-800">
+          <div className="pt-2 mt-1 border-t border-slate-800/80">
             <button
               type="button"
               onClick={() => {
                 setIsOpen(false);
                 setIsCreateModalOpen(true);
               }}
-              className="w-full py-1.5 px-2 rounded-lg bg-slate-800/50 hover:bg-slate-800 border border-slate-700/60 hover:border-violet-500/50 text-[11px] font-semibold text-violet-300 hover:text-white flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+              className="w-full flex items-center justify-center gap-2 p-2 rounded-lg bg-violet-600/10 hover:bg-violet-600/20 text-violet-300 text-xs font-medium border border-violet-500/20 hover:border-violet-500/40 transition-colors cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5" />
               <span>Create New Organization</span>

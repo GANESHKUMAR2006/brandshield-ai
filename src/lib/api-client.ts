@@ -1,3 +1,55 @@
+
+// ============================================================================
+// Multi-Tenant Workspace Header & Switching Helpers
+// ============================================================================
+
+export function getWorkspaceHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {};
+  if (typeof window !== "undefined") {
+    const slug = localStorage.getItem("active_workspace_slug");
+    const id = localStorage.getItem("active_workspace_id");
+    if (slug) headers["x-workspace-slug"] = slug;
+    if (id) headers["x-workspace-id"] = id;
+  }
+  return headers;
+}
+
+export async function workspaceFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  const wsHeaders = getWorkspaceHeaders();
+  const headers = new Headers(init?.headers);
+  for (const [key, val] of Object.entries(wsHeaders)) {
+    if (!headers.has(key)) {
+      headers.set(key, val);
+    }
+  }
+  return fetch(input, {
+    ...init,
+    headers,
+  });
+}
+
+export async function switchWorkspace(workspace: { id?: string; slug?: string }): Promise<WorkspaceItem> {
+  const res = await fetch("/api/workspaces/switch", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      workspaceId: workspace.id,
+      workspaceSlug: workspace.slug,
+    }),
+  });
+  const data = await res.json();
+  if (!res.ok || !data.success) {
+    throw new Error(data.error || "Failed to switch workspace");
+  }
+  if (typeof window !== "undefined") {
+    localStorage.setItem("active_workspace_slug", data.workspace.slug);
+    localStorage.setItem("active_workspace_id", data.workspace.id);
+    document.cookie = `active_workspace_slug=${encodeURIComponent(data.workspace.slug)}; path=/; max-age=2592000; SameSite=Lax`;
+    document.cookie = `active_workspace_id=${encodeURIComponent(data.workspace.id)}; path=/; max-age=2592000; SameSite=Lax`;
+  }
+  return data.workspace;
+}
+
 export interface LiveSourceDocument {
   id: string;
   title: string;
@@ -149,7 +201,7 @@ export interface LiveSubmissionDetails extends LiveSubmission {
 }
 
 export async function fetchSourcesData(): Promise<SourcesResponseData> {
-  const res = await fetch("/api/sources", { cache: "no-store" });
+  const res = await workspaceFetch("/api/sources", { cache: "no-store" });
   if (!res.ok) {
     throw new Error(`Failed to fetch sources: ${res.statusText}`);
   }
@@ -158,7 +210,7 @@ export async function fetchSourcesData(): Promise<SourcesResponseData> {
 }
 
 export async function fetchSubmissions(): Promise<LiveSubmission[]> {
-  const res = await fetch("/api/submissions", { cache: "no-store" });
+  const res = await workspaceFetch("/api/submissions", { cache: "no-store" });
   if (!res.ok) {
     throw new Error(`Failed to fetch submissions: ${res.statusText}`);
   }
@@ -167,7 +219,7 @@ export async function fetchSubmissions(): Promise<LiveSubmission[]> {
 }
 
 export async function fetchSubmissionDetails(id: string): Promise<LiveSubmissionDetails> {
-  const res = await fetch(`/api/submissions/${id}`, { cache: "no-store" });
+  const res = await workspaceFetch(`/api/submissions/${id}`, { cache: "no-store" });
   if (!res.ok) {
     throw new Error(`Failed to fetch submission details: ${res.statusText}`);
   }
@@ -182,7 +234,7 @@ export async function createSubmission(payload: {
   productId?: string | null;
   submittedBy?: string;
 }): Promise<LiveSubmission> {
-  const res = await fetch("/api/submissions", {
+  const res = await workspaceFetch("/api/submissions", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -205,7 +257,7 @@ export async function updateSubmission(
     actor?: string;
   }
 ): Promise<LiveSubmission> {
-  const res = await fetch(`/api/submissions/${id}`, {
+  const res = await workspaceFetch(`/api/submissions/${id}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -246,7 +298,7 @@ export async function extractClaims(
   submissionId: string,
   options?: { versionId?: string; forceReextract?: boolean }
 ): Promise<ExtractionResultPayload> {
-  const res = await fetch(`/api/submissions/${submissionId}/extract`, {
+  const res = await workspaceFetch(`/api/submissions/${submissionId}/extract`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(options || {}),
@@ -353,7 +405,7 @@ export async function fetchClaims(filters?: {
   if (filters?.search) params.append("search", filters.search);
 
   const url = `/api/claims${params.toString() ? `?${params.toString()}` : ""}`;
-  const res = await fetch(url, { cache: "no-store" });
+  const res = await workspaceFetch(url, { cache: "no-store" });
   if (!res.ok) {
     let detail = "";
     try {
@@ -370,7 +422,7 @@ export async function fetchClaims(filters?: {
 }
 
 export async function fetchClaimDetail(id: string): Promise<LiveClaimRecord> {
-  const res = await fetch(`/api/claims/${id}`, { cache: "no-store" });
+  const res = await workspaceFetch(`/api/claims/${id}`, { cache: "no-store" });
   if (!res.ok) {
     throw new Error(`Failed to fetch claim detail: ${res.statusText}`);
   }
@@ -391,7 +443,7 @@ export interface VerificationResultPayload {
 }
 
 export async function verifyClaim(id: string): Promise<VerificationResultPayload> {
-  const res = await fetch(`/api/claims/${id}/verify`, {
+  const res = await workspaceFetch(`/api/claims/${id}/verify`, {
     method: "POST",
   });
   const json = await res.json();
@@ -404,7 +456,7 @@ export async function verifyClaim(id: string): Promise<VerificationResultPayload
 export async function verifySubmissionClaims(
   submissionId: string
 ): Promise<VerificationResultPayload[]> {
-  const res = await fetch(`/api/submissions/${submissionId}/verify`, {
+  const res = await workspaceFetch(`/api/submissions/${submissionId}/verify`, {
     method: "POST",
   });
   const json = await res.json();
@@ -440,7 +492,7 @@ export async function fetchReviewQueue(filters?: {
   if (filters?.claimType) params.append("claimType", filters.claimType);
   if (filters?.search) params.append("search", filters.search);
 
-  const res = await fetch(`/api/reviews?${params.toString()}`, { cache: "no-store" });
+  const res = await workspaceFetch(`/api/reviews?${params.toString()}`, { cache: "no-store" });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.error || "Failed to fetch review queue");
@@ -456,7 +508,7 @@ export async function submitReviewDecision(input: {
   escalationCategory?: string;
   modifiedClaimText?: string;
 }): Promise<unknown> {
-  const res = await fetch("/api/reviews", {
+  const res = await workspaceFetch("/api/reviews", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
@@ -475,7 +527,7 @@ export async function publishSubmission(submissionId: string): Promise<{
   publicationStatus: string;
   publishedAt: string;
 }> {
-  const res = await fetch(`/api/submissions/${submissionId}`, {
+  const res = await workspaceFetch(`/api/submissions/${submissionId}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ action: "publish" }),
@@ -515,7 +567,7 @@ export async function discoverClaimEvidence(
     }>;
   };
 }> {
-  const res = await fetch(`/api/claims/${claimId}/evidence`, {
+  const res = await workspaceFetch(`/api/claims/${claimId}/evidence`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(options || {}),
@@ -569,7 +621,7 @@ export async function fetchAuditEvents(filters?: {
   if (filters?.startDate) params.append("startDate", filters.startDate);
   if (filters?.endDate) params.append("endDate", filters.endDate);
 
-  const res = await fetch(`/api/audit?${params.toString()}`, { cache: "no-store" });
+  const res = await workspaceFetch(`/api/audit?${params.toString()}`, { cache: "no-store" });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.error || "Failed to fetch audit events");
@@ -595,7 +647,7 @@ export async function fetchPolicies(filters?: {
   if (filters?.productId) params.set("productId", filters.productId);
   if (filters?.search) params.set("search", filters.search);
 
-  const res = await fetch(`/api/policies?${params.toString()}`, { cache: "no-store" });
+  const res = await workspaceFetch(`/api/policies?${params.toString()}`, { cache: "no-store" });
   const json = await res.json();
   if (!res.ok) {
     throw new Error(json.error || "Failed to fetch policies");
@@ -604,7 +656,7 @@ export async function fetchPolicies(filters?: {
 }
 
 export async function fetchPolicyById(id: string): Promise<import("@/types").Policy> {
-  const res = await fetch(`/api/policies/${id}`, { cache: "no-store" });
+  const res = await workspaceFetch(`/api/policies/${id}`, { cache: "no-store" });
   const json = await res.json();
   if (!res.ok) {
     throw new Error(json.error || "Failed to fetch policy details");
@@ -622,7 +674,7 @@ export async function createPolicy(data: {
   rules?: import("@/types").PolicyRule[];
   validFrom?: string;
 }): Promise<import("@/types").Policy> {
-  const res = await fetch("/api/policies", {
+  const res = await workspaceFetch("/api/policies", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
@@ -643,7 +695,7 @@ export async function createPolicyVersion(
     validUntil?: string | null;
   }
 ): Promise<import("@/types").PolicyVersion> {
-  const res = await fetch(`/api/policies/${policyId}/versions`, {
+  const res = await workspaceFetch(`/api/policies/${policyId}/versions`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
@@ -659,7 +711,7 @@ export async function activatePolicyVersion(
   policyId: string,
   versionId: string
 ): Promise<import("@/types").Policy> {
-  const res = await fetch(`/api/policies/${policyId}/activate`, {
+  const res = await workspaceFetch(`/api/policies/${policyId}/activate`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ versionId }),
@@ -672,7 +724,7 @@ export async function activatePolicyVersion(
 }
 
 export async function archivePolicy(policyId: string): Promise<import("@/types").Policy> {
-  const res = await fetch(`/api/policies/${policyId}/archive`, {
+  const res = await workspaceFetch(`/api/policies/${policyId}/archive`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
   });
@@ -696,7 +748,7 @@ export async function updateDraftPolicy(
     validUntil?: string | null;
   }
 ): Promise<import("@/types").Policy> {
-  const res = await fetch(`/api/policies/${policyId}`, {
+  const res = await workspaceFetch(`/api/policies/${policyId}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
@@ -712,7 +764,7 @@ export async function rollbackPolicyVersion(
   policyId: string,
   targetVersionNumber: number
 ): Promise<import("@/types").Policy> {
-  const res = await fetch(`/api/policies/${policyId}/rollback`, {
+  const res = await workspaceFetch(`/api/policies/${policyId}/rollback`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ targetVersionNumber }),
@@ -729,7 +781,7 @@ export async function duplicatePolicy(
   newCode: string,
   newName: string
 ): Promise<import("@/types").Policy> {
-  const res = await fetch(`/api/policies/${sourcePolicyId}/duplicate`, {
+  const res = await workspaceFetch(`/api/policies/${sourcePolicyId}/duplicate`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ newCode, newName }),
@@ -744,7 +796,7 @@ export async function duplicatePolicy(
 export async function validatePolicyRulesApi(
   policyData: unknown
 ): Promise<{ isValid: boolean; issues: { path: string; code: string; message: string }[] }> {
-  const res = await fetch("/api/policies/validate", {
+  const res = await workspaceFetch("/api/policies/validate", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(policyData),
@@ -759,7 +811,7 @@ export async function validatePolicyRulesApi(
 export async function simulatePolicy(
   request: import("@/types").PolicySimulationRequest
 ): Promise<import("@/types").PolicySimulationResult> {
-  const res = await fetch("/api/policies/simulate", {
+  const res = await workspaceFetch("/api/policies/simulate", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(request),
@@ -814,7 +866,7 @@ export interface SystemHealthData {
 }
 
 export async function fetchSystemHealth(): Promise<SystemHealthData> {
-  const res = await fetch("/api/health", { cache: "no-store" });
+  const res = await workspaceFetch("/api/health", { cache: "no-store" });
   if (!res.ok && res.status !== 503) {
     throw new Error(`Health check request failed: ${res.statusText}`);
   }
@@ -857,7 +909,7 @@ export interface WorkspaceInvitationItem {
 }
 
 export async function fetchWorkspaces(): Promise<WorkspaceItem[]> {
-  const res = await fetch("/api/workspaces", { cache: "no-store" });
+  const res = await workspaceFetch("/api/workspaces", { cache: "no-store" });
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
     throw new Error(data.error || "Failed to load workspaces");
@@ -867,7 +919,7 @@ export async function fetchWorkspaces(): Promise<WorkspaceItem[]> {
 }
 
 export async function createWorkspace(payload: { name: string; slug?: string; domain?: string }): Promise<WorkspaceItem> {
-  const res = await fetch("/api/workspaces", {
+  const res = await workspaceFetch("/api/workspaces", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -880,7 +932,7 @@ export async function createWorkspace(payload: { name: string; slug?: string; do
 }
 
 export async function fetchWorkspaceDetails(id: string): Promise<WorkspaceItem> {
-  const res = await fetch(`/api/workspaces/${id}`, { cache: "no-store" });
+  const res = await workspaceFetch(`/api/workspaces/${id}`, { cache: "no-store" });
   const data = await res.json();
   if (!res.ok || !data.success) {
     throw new Error(data.error || "Failed to load workspace details");
@@ -889,7 +941,7 @@ export async function fetchWorkspaceDetails(id: string): Promise<WorkspaceItem> 
 }
 
 export async function updateWorkspace(id: string, payload: { name: string }): Promise<WorkspaceItem> {
-  const res = await fetch(`/api/workspaces/${id}`, {
+  const res = await workspaceFetch(`/api/workspaces/${id}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -905,7 +957,7 @@ export async function archiveWorkspace(
   id: string,
   payload: { confirmName: string; reason?: string }
 ): Promise<{ success: boolean; message: string; workspace?: WorkspaceItem }> {
-  const res = await fetch(`/api/workspaces/${id}`, {
+  const res = await workspaceFetch(`/api/workspaces/${id}`, {
     method: "DELETE",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -918,7 +970,7 @@ export async function archiveWorkspace(
 }
 
 export async function fetchWorkspaceMembers(id: string): Promise<WorkspaceMemberItem[]> {
-  const res = await fetch(`/api/workspaces/${id}/members`, { cache: "no-store" });
+  const res = await workspaceFetch(`/api/workspaces/${id}/members`, { cache: "no-store" });
   const data = await res.json();
   if (!res.ok || !data.success) {
     throw new Error(data.error || "Failed to load workspace members");
@@ -927,7 +979,7 @@ export async function fetchWorkspaceMembers(id: string): Promise<WorkspaceMember
 }
 
 export async function updateMemberRole(workspaceId: string, memberId: string, role: string): Promise<void> {
-  const res = await fetch(`/api/workspaces/${workspaceId}/members/${memberId}`, {
+  const res = await workspaceFetch(`/api/workspaces/${workspaceId}/members/${memberId}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ role }),
@@ -939,7 +991,7 @@ export async function updateMemberRole(workspaceId: string, memberId: string, ro
 }
 
 export async function removeWorkspaceMember(workspaceId: string, memberId: string): Promise<void> {
-  const res = await fetch(`/api/workspaces/${workspaceId}/members/${memberId}`, {
+  const res = await workspaceFetch(`/api/workspaces/${workspaceId}/members/${memberId}`, {
     method: "DELETE",
   });
   const data = await res.json();
@@ -949,7 +1001,7 @@ export async function removeWorkspaceMember(workspaceId: string, memberId: strin
 }
 
 export async function fetchWorkspaceInvitations(workspaceId: string): Promise<WorkspaceInvitationItem[]> {
-  const res = await fetch(`/api/workspaces/${workspaceId}/invitations`, { cache: "no-store" });
+  const res = await workspaceFetch(`/api/workspaces/${workspaceId}/invitations`, { cache: "no-store" });
   const data = await res.json();
   if (!res.ok || !data.success) {
     throw new Error(data.error || "Failed to load invitations");
@@ -961,7 +1013,7 @@ export async function createWorkspaceInvitation(
   workspaceId: string,
   payload: { email: string; role: string }
 ): Promise<{ id: string; email: string; role: string; inviteToken?: string }> {
-  const res = await fetch(`/api/workspaces/${workspaceId}/invitations`, {
+  const res = await workspaceFetch(`/api/workspaces/${workspaceId}/invitations`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -974,7 +1026,7 @@ export async function createWorkspaceInvitation(
 }
 
 export async function revokeWorkspaceInvitation(workspaceId: string, inviteId: string): Promise<void> {
-  const res = await fetch(`/api/workspaces/${workspaceId}/invitations/${inviteId}`, {
+  const res = await workspaceFetch(`/api/workspaces/${workspaceId}/invitations/${inviteId}`, {
     method: "DELETE",
   });
   const data = await res.json();
@@ -984,7 +1036,7 @@ export async function revokeWorkspaceInvitation(workspaceId: string, inviteId: s
 }
 
 export async function acceptWorkspaceInvitation(token: string): Promise<{ success: boolean; workspace: WorkspaceItem }> {
-  const res = await fetch("/api/workspaces/invitations/accept", {
+  const res = await workspaceFetch("/api/workspaces/invitations/accept", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ token }),
@@ -1055,7 +1107,7 @@ export interface SourceDocumentContent {
 }
 
 export async function fetchClaimCitations(claimId: string): Promise<CitationCoordinate[]> {
-  const res = await fetch(`/api/claims/${claimId}/citation`, { cache: "no-store" });
+  const res = await workspaceFetch(`/api/claims/${claimId}/citation`, { cache: "no-store" });
   if (!res.ok) {
     const json = await res.json().catch(() => ({}));
     throw new Error(json.error || "Failed to load claim citations");
@@ -1065,7 +1117,7 @@ export async function fetchClaimCitations(claimId: string): Promise<CitationCoor
 }
 
 export async function fetchSourceDocumentContent(sourceId: string): Promise<SourceDocumentContent> {
-  const res = await fetch(`/api/sources/${sourceId}/content`, { cache: "no-store" });
+  const res = await workspaceFetch(`/api/sources/${sourceId}/content`, { cache: "no-store" });
   if (!res.ok) {
     const json = await res.json().catch(() => ({}));
     throw new Error(json.error || "Failed to load document content");
@@ -1100,7 +1152,7 @@ export interface UpdateProductInput {
 }
 
 export async function fetchProducts(): Promise<LiveProduct[]> {
-  const res = await fetch("/api/products", { cache: "no-store" });
+  const res = await workspaceFetch("/api/products", { cache: "no-store" });
   if (!res.ok) {
     const json = await res.json().catch(() => ({}));
     throw new Error(json.error || "Failed to load products");
@@ -1110,7 +1162,7 @@ export async function fetchProducts(): Promise<LiveProduct[]> {
 }
 
 export async function createProduct(input: CreateProductInput): Promise<LiveProduct> {
-  const res = await fetch("/api/products", {
+  const res = await workspaceFetch("/api/products", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
@@ -1123,7 +1175,7 @@ export async function createProduct(input: CreateProductInput): Promise<LiveProd
 }
 
 export async function updateProduct(id: string, input: UpdateProductInput): Promise<LiveProduct> {
-  const res = await fetch(`/api/products/${id}`, {
+  const res = await workspaceFetch(`/api/products/${id}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
@@ -1136,7 +1188,7 @@ export async function updateProduct(id: string, input: UpdateProductInput): Prom
 }
 
 export async function deleteProduct(id: string): Promise<void> {
-  const res = await fetch(`/api/products/${id}`, {
+  const res = await workspaceFetch(`/api/products/${id}`, {
     method: "DELETE",
   });
   const json = await res.json().catch(() => ({}));
@@ -1178,7 +1230,7 @@ export interface UpdatePromotionInput {
 }
 
 export async function fetchPromotions(): Promise<LivePromotion[]> {
-  const res = await fetch("/api/promotions", { cache: "no-store" });
+  const res = await workspaceFetch("/api/promotions", { cache: "no-store" });
   if (!res.ok) {
     const json = await res.json().catch(() => ({}));
     throw new Error(json.error || "Failed to load promotions");
@@ -1188,7 +1240,7 @@ export async function fetchPromotions(): Promise<LivePromotion[]> {
 }
 
 export async function createPromotion(input: CreatePromotionInput): Promise<LivePromotion> {
-  const res = await fetch("/api/promotions", {
+  const res = await workspaceFetch("/api/promotions", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
@@ -1201,7 +1253,7 @@ export async function createPromotion(input: CreatePromotionInput): Promise<Live
 }
 
 export async function updatePromotion(id: string, input: UpdatePromotionInput): Promise<LivePromotion> {
-  const res = await fetch(`/api/promotions/${id}`, {
+  const res = await workspaceFetch(`/api/promotions/${id}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
@@ -1214,7 +1266,7 @@ export async function updatePromotion(id: string, input: UpdatePromotionInput): 
 }
 
 export async function deletePromotion(id: string): Promise<void> {
-  const res = await fetch(`/api/promotions/${id}`, {
+  const res = await workspaceFetch(`/api/promotions/${id}`, {
     method: "DELETE",
   });
   const json = await res.json().catch(() => ({}));
@@ -1250,7 +1302,7 @@ export interface IngestEvidenceResponse {
 }
 
 export async function ingestEvidenceDocument(input: IngestEvidenceInput): Promise<IngestEvidenceResponse> {
-  const res = await fetch("/api/sources/ingest", {
+  const res = await workspaceFetch("/api/sources/ingest", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
@@ -1295,7 +1347,7 @@ export interface OnboardingStatusResponse {
 }
 
 export async function fetchOnboardingStatus(): Promise<OnboardingStatusResponse> {
-  const res = await fetch("/api/onboarding/status", { cache: "no-store" });
+  const res = await workspaceFetch("/api/onboarding/status", { cache: "no-store" });
   if (!res.ok) {
     const json = await res.json().catch(() => ({}));
     throw new Error(json.error || "Failed to load onboarding status");

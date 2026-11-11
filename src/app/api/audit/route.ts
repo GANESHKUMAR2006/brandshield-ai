@@ -10,7 +10,7 @@ import { AuditService } from "@/lib/audit/audit-service";
 // GET /api/audit - Live immutable audit log with full filtering
 export async function GET(request: NextRequest) {
   try {
-    const session = await resolveServerSession();
+    const session = await resolveServerSession(undefined, request);
     const { searchParams } = new URL(request.url);
 
     const search = searchParams.get("search") || undefined;

@@ -76,7 +76,7 @@ export async function GET(
         )
       : { rows: [] };
 
-    if (memberCheck.rows.length === 0 && session.workspaceId !== id) {
+    if (memberCheck.rows.length === 0) {
       return NextResponse.json(
         { success: false, error: "Forbidden: You are not a member of this workspace" },
         { status: 403 }

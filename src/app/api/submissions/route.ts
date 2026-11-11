@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { query, withTransaction } from "@/lib/db/server-db";
 import { z } from "zod";
 import {
@@ -17,9 +17,9 @@ const createSubmissionSchema = z.object({
 });
 
 // GET /api/submissions
-export async function GET() {
+export async function GET(request?: NextRequest) {
   try {
-    const session = await resolveServerSession();
+    const session = await resolveServerSession(undefined, request);
 
     const submissionsRes = await query(`
       SELECT 
@@ -80,7 +80,7 @@ export async function GET() {
 // POST /api/submissions
 export async function POST(request: Request) {
   try {
-    const session = await resolveServerSession();
+    const session = await resolveServerSession(undefined, request);
 
     const body = await request.json();
     const validated = createSubmissionSchema.safeParse(body);
