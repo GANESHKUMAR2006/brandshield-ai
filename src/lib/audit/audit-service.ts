@@ -21,6 +21,8 @@ export interface RecordEventInput {
   workspaceId: string;
   actorId: string;
   actorRole?: string;
+  actorName?: string;
+  actorEmail?: string;
   entityType: AuditEntityType | string;
   entityId: string;
   action: AuditActionType | string;
@@ -87,10 +89,12 @@ export class AuditService {
     const sanitizedBefore = this.sanitizeMetadata(input.beforeState);
     const sanitizedAfter = this.sanitizeMetadata(input.afterState);
 
-    // Merge actor role and correlation ID into after_state if not already present
+    // Merge actor role, actor name, actor email, and correlation ID into after_state if not already present
     const enrichedAfter = {
       ...(sanitizedAfter || {}),
       ...(input.actorRole ? { actor_role: input.actorRole } : {}),
+      ...(input.actorName ? { actor_name: input.actorName } : {}),
+      ...(input.actorEmail ? { actor_email: input.actorEmail } : {}),
       ...(input.correlationId ? { correlation_id: input.correlationId } : {}),
     };
 

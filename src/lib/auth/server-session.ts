@@ -218,15 +218,31 @@ export async function resolveServerSession(
       requestedSlug !== testSessionOverride.workspaceSlug &&
       requestedSlug !== testSessionOverride.workspaceId
     ) {
-      const memberRes = await query<{ role: string; workspace_id: string; slug: string }>(
-        `SELECT wm.role, w.id as workspace_id, w.slug 
-         FROM workspace_memberships wm
-         JOIN workspaces w ON wm.workspace_id = w.id
-         WHERE wm.user_id = $1 AND (w.slug = $2 OR w.id::text = $2) AND wm.status = 'active'
-           AND (w.status IS NULL OR w.status != 'archived')
-         LIMIT 1`,
-        [testSessionOverride.userId, requestedSlug]
-      );
+      let memberRes;
+      try {
+        memberRes = await query<{ role: string; workspace_id: string; slug: string }>(
+          `SELECT wm.role, w.id as workspace_id, w.slug 
+           FROM workspace_memberships wm
+           JOIN workspaces w ON wm.workspace_id = w.id
+           WHERE wm.user_id = $1 AND (w.slug = $2 OR w.id::text = $2) AND wm.status = 'active'
+             AND (w.status IS NULL OR w.status != 'archived')
+           LIMIT 1`,
+          [testSessionOverride.userId, requestedSlug]
+        );
+      } catch (err: any) {
+        if (err?.code === '42703' || String(err?.message).includes('status')) {
+          memberRes = await query<{ role: string; workspace_id: string; slug: string }>(
+            `SELECT wm.role, w.id as workspace_id, w.slug 
+             FROM workspace_memberships wm
+             JOIN workspaces w ON wm.workspace_id = w.id
+             WHERE wm.user_id = $1 AND (w.slug = $2 OR w.id::text = $2) AND wm.status = 'active'
+             LIMIT 1`,
+            [testSessionOverride.userId, requestedSlug]
+          );
+        } else {
+          throw err;
+        }
+      }
       if (!memberRes || memberRes.rows.length === 0) {
         throw new WorkspaceAccessError(
           `Forbidden: User "${testSessionOverride.userId}" does not have active membership in workspace "${requestedSlug}".`
@@ -259,36 +275,72 @@ export async function resolveServerSession(
       // 1. Check database workspace_memberships first for real multi-tenant roles & workspaces
       try {
         let memberRes;
-        if (requestedSlug) {
-          memberRes = await query<{
-            role: string;
-            workspace_id: string;
-            slug: string;
-          }>(
-            `SELECT wm.role, w.id as workspace_id, w.slug 
-             FROM workspace_memberships wm
-             JOIN workspaces w ON wm.workspace_id = w.id
-             WHERE wm.user_id = $1 AND (w.slug = $2 OR w.id::text = $2) AND wm.status = 'active'
-               AND (w.status IS NULL OR w.status != 'archived')
-             LIMIT 1`,
-            [user.id, requestedSlug]
-          );
-        } else {
-          // Resolve primary active workspace membership for authenticated user
-          memberRes = await query<{
-            role: string;
-            workspace_id: string;
-            slug: string;
-          }>(
-            `SELECT wm.role, w.id as workspace_id, w.slug 
-             FROM workspace_memberships wm
-             JOIN workspaces w ON wm.workspace_id = w.id
-             WHERE wm.user_id = $1 AND wm.status = 'active'
-               AND (w.status IS NULL OR w.status != 'archived')
-             ORDER BY wm.created_at ASC
-             LIMIT 1`,
-            [user.id]
-          );
+        try {
+          if (requestedSlug) {
+            memberRes = await query<{
+              role: string;
+              workspace_id: string;
+              slug: string;
+            }>(
+              `SELECT wm.role, w.id as workspace_id, w.slug 
+               FROM workspace_memberships wm
+               JOIN workspaces w ON wm.workspace_id = w.id
+               WHERE wm.user_id = $1 AND (w.slug = $2 OR w.id::text = $2) AND wm.status = 'active'
+                 AND (w.status IS NULL OR w.status != 'archived')
+               LIMIT 1`,
+              [user.id, requestedSlug]
+            );
+          } else {
+            // Resolve primary active workspace membership for authenticated user
+            memberRes = await query<{
+              role: string;
+              workspace_id: string;
+              slug: string;
+            }>(
+              `SELECT wm.role, w.id as workspace_id, w.slug 
+               FROM workspace_memberships wm
+               JOIN workspaces w ON wm.workspace_id = w.id
+               WHERE wm.user_id = $1 AND wm.status = 'active'
+                 AND (w.status IS NULL OR w.status != 'archived')
+               ORDER BY wm.created_at ASC
+               LIMIT 1`,
+              [user.id]
+            );
+          }
+        } catch (dbErr: any) {
+          // Graceful fallback if status column does not exist on workspaces table yet
+          if (dbErr?.code === '42703' || String(dbErr?.message).includes('status')) {
+            if (requestedSlug) {
+              memberRes = await query<{
+                role: string;
+                workspace_id: string;
+                slug: string;
+              }>(
+                `SELECT wm.role, w.id as workspace_id, w.slug 
+                 FROM workspace_memberships wm
+                 JOIN workspaces w ON wm.workspace_id = w.id
+                 WHERE wm.user_id = $1 AND (w.slug = $2 OR w.id::text = $2) AND wm.status = 'active'
+                 LIMIT 1`,
+                [user.id, requestedSlug]
+              );
+            } else {
+              memberRes = await query<{
+                role: string;
+                workspace_id: string;
+                slug: string;
+              }>(
+                `SELECT wm.role, w.id as workspace_id, w.slug 
+                 FROM workspace_memberships wm
+                 JOIN workspaces w ON wm.workspace_id = w.id
+                 WHERE wm.user_id = $1 AND wm.status = 'active'
+                 ORDER BY wm.created_at ASC
+                 LIMIT 1`,
+                [user.id]
+              );
+            }
+          } else {
+            throw dbErr;
+          }
         }
 
         if (memberRes && memberRes.rows.length > 0) {
@@ -369,8 +421,20 @@ export async function resolveServerSession(
         if (wsRes.rows.length > 0) {
           resolvedWorkspaceId = wsRes.rows[0].id;
         }
-      } catch {
-        // Continue with null if query fails
+      } catch (wsErr: any) {
+        if (wsErr?.code === '42703' || String(wsErr?.message).includes('status')) {
+          try {
+            const wsRes = await query<{ id: string }>(
+              `SELECT id FROM workspaces WHERE slug = $1 LIMIT 1`,
+              [effectiveSlug]
+            );
+            if (wsRes.rows.length > 0) {
+              resolvedWorkspaceId = wsRes.rows[0].id;
+            }
+          } catch {
+            // Continue with null if query fails
+          }
+        }
       }
 
       if (!resolvedWorkspaceId) {

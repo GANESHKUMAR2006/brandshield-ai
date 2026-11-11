@@ -116,6 +116,9 @@ export async function POST(request: NextRequest) {
       await AuditService.recordEvent({
         workspaceId: invite.workspace_id,
         actorId: user.id,
+        actorRole: invite.role,
+        actorName: user.name,
+        actorEmail: user.email,
         entityType: "workspace",
         entityId: invite.id,
         action: "invitation_accepted",

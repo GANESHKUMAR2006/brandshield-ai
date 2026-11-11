@@ -165,6 +165,9 @@ export async function POST(
       await AuditService.recordEvent({
         workspaceId: id,
         actorId: session.userId,
+        actorRole: session.role,
+        actorName: session.userName,
+        actorEmail: session.userEmail,
         entityType: "workspace",
         entityId: createdInvite.id,
         action: "invitation_created",

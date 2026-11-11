@@ -23,21 +23,44 @@ export async function GET(
     const session = await resolveServerSession();
 
     // Verify workspace exists
-    const wsRes = await query<{
-      id: string;
-      name: string;
-      slug: string;
-      status: string;
-      archived_at: string | null;
-      archived_by: string | null;
-      created_at: string;
-      updated_at: string;
-    }>(
-      `SELECT id, name, slug, COALESCE(status, 'active') as status, archived_at, archived_by, created_at, updated_at
-       FROM workspaces
-       WHERE id = $1 LIMIT 1`,
-      [id]
-    );
+    let wsRes;
+    try {
+      wsRes = await query<{
+        id: string;
+        name: string;
+        slug: string;
+        status: string;
+        archived_at: string | null;
+        archived_by: string | null;
+        created_at: string;
+        updated_at: string;
+      }>(
+        `SELECT id, name, slug, COALESCE(status, 'active') as status, archived_at, archived_by, created_at, updated_at
+         FROM workspaces
+         WHERE id = $1 LIMIT 1`,
+        [id]
+      );
+    } catch (err: any) {
+      if (err?.code === '42703' || String(err?.message).includes('status')) {
+        wsRes = await query<{
+          id: string;
+          name: string;
+          slug: string;
+          status: string;
+          archived_at: string | null;
+          archived_by: string | null;
+          created_at: string;
+          updated_at: string;
+        }>(
+          `SELECT id, name, slug, 'active' as status, NULL as archived_at, NULL as archived_by, created_at, updated_at
+           FROM workspaces
+           WHERE id = $1 LIMIT 1`,
+          [id]
+        );
+      } else {
+        throw err;
+      }
+    }
 
     if (wsRes.rows.length === 0) {
       return NextResponse.json({ success: false, error: "Workspace not found" }, { status: 404 });

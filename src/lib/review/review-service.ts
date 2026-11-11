@@ -651,7 +651,7 @@ export class ReviewWorkflowService {
         ) VALUES ($1, $2, 'claim', $3, $4, $5, $6)`,
         [
           claim.workspace_id,
-          session.userName,
+          session.userId,
           claim.id,
           input.decision === "modified"
             ? "claim_modified"
@@ -671,6 +671,9 @@ export class ReviewWorkflowService {
             child_claim_id: childClaimId,
             override_reason: input.overrideReason || null,
             escalation_category: input.escalationCategory || null,
+            actor_name: session.userName,
+            actor_email: session.userEmail,
+            reviewer_role: session.role,
           }),
         ]
       );
@@ -929,7 +932,7 @@ export class ReviewWorkflowService {
         ) VALUES ($1, $2, 'submission', $3, 'publication_status_updated', $4, $5)`,
         [
           submission.workspace_id,
-          session.userName,
+          session.userId,
           submission.id,
           JSON.stringify({
             status: submission.status,
@@ -939,6 +942,8 @@ export class ReviewWorkflowService {
             status: "approved",
             publication_status: "published",
             published_by: session.userName,
+            actor_name: session.userName,
+            actor_email: session.userEmail,
             reviewer_role: session.role,
             version_number: compilation.versionNumber,
             claims_count: eligibility.totalActiveClaims,

@@ -40,18 +40,38 @@ export async function GET(request: NextRequest) {
       const includeArchived = request.nextUrl.searchParams.get("includeArchived") === "true";
 
       // Safe demo fallback: Return demo workspace without querying memberships with non-UUID demo string
-      const demoWs = await query<{
-        id: string;
-        name: string;
-        slug: string;
-        status?: string;
-        created_at: string;
-      }>(
-        `SELECT id, name, slug, COALESCE(status, 'active') as status, created_at
-         FROM workspaces
-         WHERE slug = $1 ${includeArchived ? "" : "AND (status IS NULL OR status != 'archived')"} LIMIT 1`,
-        [DERMAGLOW_WORKSPACE_SLUG]
-      );
+      let demoWs;
+      try {
+        demoWs = await query<{
+          id: string;
+          name: string;
+          slug: string;
+          status?: string;
+          created_at: string;
+        }>(
+          `SELECT id, name, slug, COALESCE(status, 'active') as status, created_at
+           FROM workspaces
+           WHERE slug = $1 ${includeArchived ? "" : "AND (status IS NULL OR status != 'archived')"} LIMIT 1`,
+          [DERMAGLOW_WORKSPACE_SLUG]
+        );
+      } catch (err: any) {
+        if (err?.code === '42703' || String(err?.message).includes('status')) {
+          demoWs = await query<{
+            id: string;
+            name: string;
+            slug: string;
+            status?: string;
+            created_at: string;
+          }>(
+            `SELECT id, name, slug, 'active' as status, created_at
+             FROM workspaces
+             WHERE slug = $1 LIMIT 1`,
+            [DERMAGLOW_WORKSPACE_SLUG]
+          );
+        } else {
+          throw err;
+        }
+      }
 
       return NextResponse.json({
         success: true,
@@ -79,30 +99,61 @@ export async function GET(request: NextRequest) {
     const includeArchived = request.nextUrl.searchParams.get("includeArchived") === "true";
 
     // Query all workspaces the authenticated user belongs to (excluding archived organizations by default)
-    const res = await query<{
-      id: string;
-      name: string;
-      slug: string;
-      role: string;
-      status: string;
-      created_at: string;
-      member_count: string;
-    }>(
-      `SELECT 
-         w.id,
-         w.name,
-         w.slug,
-         COALESCE(wm.role, 'compliance_reviewer') as role,
-         COALESCE(wm.status, 'active') as status,
-         w.created_at,
-         (SELECT COUNT(*)::text FROM workspace_memberships WHERE workspace_id = w.id AND status = 'active') as member_count
-       FROM workspaces w
-       JOIN workspace_memberships wm ON w.id = wm.workspace_id
-       WHERE wm.user_id = $1 AND ${includeArchived ? "(wm.status = 'active' OR wm.status = 'suspended')" : "wm.status = 'active'"}
-         ${includeArchived ? "" : "AND (w.status IS NULL OR w.status != 'archived')"}
-       ORDER BY w.name ASC`,
-      [user.id]
-    );
+    let res;
+    try {
+      res = await query<{
+        id: string;
+        name: string;
+        slug: string;
+        role: string;
+        status: string;
+        created_at: string;
+        member_count: string;
+      }>(
+        `SELECT 
+           w.id,
+           w.name,
+           w.slug,
+           COALESCE(wm.role, 'compliance_reviewer') as role,
+           COALESCE(wm.status, 'active') as status,
+           w.created_at,
+           (SELECT COUNT(*)::text FROM workspace_memberships WHERE workspace_id = w.id AND status = 'active') as member_count
+         FROM workspaces w
+         JOIN workspace_memberships wm ON w.id = wm.workspace_id
+         WHERE wm.user_id = $1 AND ${includeArchived ? "(wm.status = 'active' OR wm.status = 'suspended')" : "wm.status = 'active'"}
+           ${includeArchived ? "" : "AND (w.status IS NULL OR w.status != 'archived')"}
+         ORDER BY w.name ASC`,
+        [user.id]
+      );
+    } catch (err: any) {
+      if (err?.code === '42703' || String(err?.message).includes('status')) {
+        res = await query<{
+          id: string;
+          name: string;
+          slug: string;
+          role: string;
+          status: string;
+          created_at: string;
+          member_count: string;
+        }>(
+          `SELECT 
+             w.id,
+             w.name,
+             w.slug,
+             COALESCE(wm.role, 'compliance_reviewer') as role,
+             COALESCE(wm.status, 'active') as status,
+             w.created_at,
+             (SELECT COUNT(*)::text FROM workspace_memberships WHERE workspace_id = w.id AND status = 'active') as member_count
+           FROM workspaces w
+           JOIN workspace_memberships wm ON w.id = wm.workspace_id
+           WHERE wm.user_id = $1 AND ${includeArchived ? "(wm.status = 'active' OR wm.status = 'suspended')" : "wm.status = 'active'"}
+           ORDER BY w.name ASC`,
+          [user.id]
+        );
+      } else {
+        throw err;
+      }
+    }
 
     return NextResponse.json({
       success: true,

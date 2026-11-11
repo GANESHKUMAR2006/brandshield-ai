@@ -30,7 +30,7 @@ import { NextRequest } from "next/server";
 import { POST as resetPasswordRoute } from "../src/app/api/auth/reset-password/route";
 import { GET as authCallbackRoute } from "../src/app/auth/callback/route";
 
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://brandshield-ai-1.onrender.com';
+const APP_URL = process.env.TEST_APP_URL || process.env.NEXT_PUBLIC_APP_URL || 'https://brandshield-ai-1.onrender.com';
 
 interface TestResult {
   suite: string;

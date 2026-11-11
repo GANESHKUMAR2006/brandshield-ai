@@ -239,7 +239,7 @@ export async function PATCH(
          VALUES ($1, $2, 'submission', $3, $4, $5, $6);`,
         [
           current.workspace_id,
-          actor,
+          session.userId,
           id,
           updatedStatus === "submitted" && current.status !== "submitted"
             ? "submission_submitted"
@@ -258,6 +258,9 @@ export async function PATCH(
             channel: updatedChannel,
             version: newVersionNumber,
             version_incremented: newVersionCreated,
+            actor_name: session.userName,
+            actor_email: session.userEmail,
+            actor_role: session.role,
           }),
         ]
       );
