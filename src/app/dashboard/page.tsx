@@ -9,7 +9,7 @@ import { formatDateTime } from "@/lib/utils/formatters";
 import { ComplianceAnalyticsSummary, ComplianceInsight } from "@/types";
 import { ComplianceWorkflow } from "@/components/dashboard/ComplianceWorkflow";
 import { CreateSubmissionModal } from "@/components/submissions/CreateSubmissionModal";
-import { LiveProduct, fetchSourcesData } from "@/lib/api-client";
+import { LiveProduct, fetchProducts } from "@/lib/api-client";
 import {
   CheckCircle2,
   Clock,
@@ -50,24 +50,33 @@ export default function DashboardPage() {
 
   const loadDashboardData = React.useCallback(() => {
     let isMounted = true;
-    Promise.all([
-      fetch("/api/dashboard/stats", { cache: "no-store" }).then((res) => (res.ok ? res.json() : null)),
-      fetchSourcesData().catch(() => ({ products: [] })),
-    ])
-      .then(([statsJson, sourcesData]) => {
+
+    // 1. Fetch primary dashboard metrics and analytics
+    fetch("/api/dashboard/stats", { cache: "no-store" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((statsJson) => {
         if (!isMounted) return;
         if (statsJson) {
           if (statsJson.analytics) setAnalytics(statsJson.analytics);
           if (statsJson.insights) setInsights(statsJson.insights);
           setRecentSubs(statsJson.recentSubmissions || []);
         }
-        if (sourcesData && "products" in sourcesData) {
-          setProducts(sourcesData.products || []);
-        }
         setIsLoading(false);
       })
       .catch(() => {
-        if (isMounted) setIsLoading(false);
+        if (!isMounted) return;
+        setIsLoading(false);
+      });
+
+    // 2. Fetch lightweight product catalog for modal dropdown independently
+    fetchProducts()
+      .then((prods) => {
+        if (!isMounted) return;
+        setProducts(Array.isArray(prods) ? prods : []);
+      })
+      .catch(() => {
+        if (!isMounted) return;
+        setProducts([]);
       });
 
     return () => {
@@ -116,17 +125,18 @@ export default function DashboardPage() {
                 className="shadow-lg shadow-violet-950/40 text-sm font-bold flex items-center justify-center gap-2 px-6 py-3 cursor-pointer"
               >
                 <Sparkles className="w-4 h-4 text-cyan-300" />
-                <span>Check Marketing Content</span>
+                <span>New Marketing Submission</span>
               </Button>
               <div className="flex items-center justify-center gap-2 text-xs text-slate-400">
                 <span>or</span>
                 <Link
                   href="/reviews"
                   data-tour="review-queue-link"
-                  className="text-violet-400 hover:text-violet-300 font-semibold transition-colors flex items-center gap-1"
+                  className="px-2.5 py-1 rounded-lg bg-violet-950/60 hover:bg-violet-900/60 border border-violet-800/60 text-violet-300 hover:text-white font-semibold transition-all flex items-center gap-1.5 shadow-sm"
                 >
-                  <span>Review Queue ({awaitingReview})</span>
-                  <ArrowRight className="w-3 h-3" />
+                  <Clock className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Review Queue ({awaitingReview} pending)</span>
+                  <ArrowRight className="w-3 h-3 ml-0.5" />
                 </Link>
               </div>
             </div>
@@ -160,7 +170,7 @@ export default function DashboardPage() {
           <div className="rounded-xl border border-slate-800/80 bg-slate-900/60 backdrop-blur-md p-4 flex flex-col justify-between hover:border-slate-700 transition-all shadow-lg group">
             <div>
               <div className="flex items-center justify-between text-xs font-semibold text-slate-400">
-                <span className="uppercase text-[10px] tracking-wider font-bold">Claims Analyzed</span>
+                <span className="uppercase text-[10px] tracking-wider font-bold">Extracted Claims</span>
                 <div className="p-1.5 rounded-lg bg-slate-800/70 border border-slate-700/60 text-slate-300 group-hover:text-cyan-400 transition-colors">
                   <Layers className="w-3.5 h-3.5" />
                 </div>
@@ -170,12 +180,12 @@ export default function DashboardPage() {
                   {isLoading ? "..." : claimsAnalyzed}
                 </span>
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-800/80 text-slate-300 border border-slate-700/60">
-                  Total
+                  Total Claims
                 </span>
               </div>
             </div>
             <p className="mt-2 text-[11px] text-slate-400">
-              Marketing assertions extracted from copy
+              Individual assertions extracted from copy (distinct from submissions)
             </p>
           </div>
 
@@ -183,7 +193,7 @@ export default function DashboardPage() {
           <div className="rounded-xl border border-emerald-900/40 bg-slate-900/60 backdrop-blur-md p-4 flex flex-col justify-between hover:border-emerald-700/50 transition-all shadow-lg group">
             <div>
               <div className="flex items-center justify-between text-xs font-semibold text-slate-400">
-                <span className="uppercase text-[10px] tracking-wider font-bold text-emerald-400">Evidence Supported</span>
+                <span className="uppercase text-[10px] tracking-wider font-bold text-emerald-400">AI: Supported Claims</span>
                 <div className="p-1.5 rounded-lg bg-emerald-950/60 border border-emerald-800/60 text-emerald-400">
                   <CheckCircle2 className="w-3.5 h-3.5" />
                 </div>
@@ -193,12 +203,12 @@ export default function DashboardPage() {
                   {isLoading ? "..." : evidenceSupported}
                 </span>
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-950/80 text-emerald-300 border border-emerald-800/60">
-                  Verified
+                  Automated
                 </span>
               </div>
             </div>
             <p className="mt-2 text-[11px] text-slate-400">
-              Backed by clinical trial & catalogue records
+              Verified by evidence (still requires human sign-off if flagged)
             </p>
           </div>
 
@@ -206,7 +216,7 @@ export default function DashboardPage() {
           <div className="rounded-xl border border-rose-900/40 bg-slate-900/60 backdrop-blur-md p-4 flex flex-col justify-between hover:border-rose-700/50 transition-all shadow-lg group">
             <div>
               <div className="flex items-center justify-between text-xs font-semibold text-slate-400">
-                <span className="uppercase text-[10px] tracking-wider font-bold text-rose-400">Contradicted Claims</span>
+                <span className="uppercase text-[10px] tracking-wider font-bold text-rose-400">AI: Contradicted Claims</span>
                 <div className="p-1.5 rounded-lg bg-rose-950/60 border border-rose-800/60 text-rose-400">
                   <AlertTriangle className="w-3.5 h-3.5" />
                 </div>
@@ -216,12 +226,12 @@ export default function DashboardPage() {
                   {isLoading ? "..." : contradictedClaims}
                 </span>
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-950/80 text-rose-300 border border-rose-800/60">
-                  Conflicts
+                  Gate Blocker
                 </span>
               </div>
             </div>
             <p className="mt-2 text-[11px] text-slate-400">
-              Directly conflicting with approved evidence
+              Directly conflicting with approved evidence dossier
             </p>
           </div>
 
@@ -239,12 +249,12 @@ export default function DashboardPage() {
                   {isLoading ? "..." : awaitingReview}
                 </span>
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-950/80 text-amber-300 border border-amber-800/60">
-                  Queue Active
+                  Human Queue
                 </span>
               </div>
             </div>
             <p className="mt-2 text-[11px] text-slate-400">
-              Pending compliance or legal determination
+              Claims pending compliance or legal sign-off in review queue
             </p>
           </div>
 
@@ -262,12 +272,12 @@ export default function DashboardPage() {
                   {isLoading ? "..." : publishedSubmissions}
                 </span>
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-violet-950/80 text-violet-300 border border-violet-800/60">
-                  Gate Cleared
+                  Submissions
                 </span>
               </div>
             </div>
             <p className="mt-2 text-[11px] text-slate-400">
-              Submissions cleared by publication gate
+              Whole marketing campaigns that passed gate and published
             </p>
           </div>
         </div>

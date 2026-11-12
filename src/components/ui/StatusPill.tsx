@@ -24,23 +24,23 @@ const statusMap: Record<
   rejected: { label: "Rejected", variant: "danger" },
   published: { label: "Published", variant: "success" },
 
-  // Publication Statuses
-  ineligible: { label: "Ineligible for Pub", variant: "neutral" },
-  eligible: { label: "Publication Ready", variant: "success" },
+  // Publication Gate Statuses
+  ineligible: { label: "Gate: Blocked", variant: "neutral" },
+  eligible: { label: "Gate: Eligible", variant: "success" },
 
   // Human Review Workflow Statuses
-  pending: { label: "Pending Review", variant: "neutral" },
-  modified: { label: "Modified", variant: "indigo" },
+  pending: { label: "Review: Pending", variant: "neutral" },
+  modified: { label: "Review: Modified", variant: "indigo" },
 
-  // Claim Statuses
-  supported: { label: "Supported", variant: "success" },
-  contradicted: { label: "Contradicted", variant: "danger" },
-  outdated: { label: "Outdated", variant: "warning" },
-  unverified: { label: "Unverified", variant: "neutral" },
-  needs_review: { label: "Needs Review", variant: "warning" },
-  requires_review: { label: "Requires Review", variant: "warning" },
-  unsupported: { label: "Unsupported", variant: "danger" },
-  flagged: { label: "Flagged", variant: "danger" },
+  // Claim Automated Verification Statuses
+  supported: { label: "AI: Supported", variant: "success" },
+  contradicted: { label: "AI: Contradicted", variant: "danger" },
+  outdated: { label: "AI: Outdated", variant: "warning" },
+  unverified: { label: "AI: Unverified", variant: "neutral" },
+  needs_review: { label: "AI: Needs Review", variant: "warning" },
+  requires_review: { label: "AI: Requires Review", variant: "warning" },
+  unsupported: { label: "AI: Unsupported", variant: "danger" },
+  flagged: { label: "AI: Flagged", variant: "danger" },
 
   // Generic
   active: { label: "Active", variant: "success" },

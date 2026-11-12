@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { AuthSessionProvider } from "@/components/auth/AuthSessionContext";
 import { TourProvider } from "@/components/tour/TourContext";
 import { WelcomeModal } from "@/components/tour/WelcomeModal";
 import { TourSpotlight } from "@/components/tour/TourSpotlight";
@@ -18,11 +19,13 @@ export default function RootLayout({
   return (
     <html lang="en" className="h-full bg-[#090D16] text-slate-100 antialiased dark">
       <body className="min-h-full flex flex-col font-sans text-slate-100 bg-[#090D16]">
-        <TourProvider>
-          {children}
-          <WelcomeModal />
-          <TourSpotlight />
-        </TourProvider>
+        <AuthSessionProvider>
+          <TourProvider>
+            {children}
+            <WelcomeModal />
+            <TourSpotlight />
+          </TourProvider>
+        </AuthSessionProvider>
       </body>
     </html>
   );

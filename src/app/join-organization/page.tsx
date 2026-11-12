@@ -1,9 +1,22 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Shield, KeyRound, Building2, Clock, CheckCircle2, XCircle, ArrowRight, AlertTriangle } from "lucide-react";
+import {
+  Shield,
+  KeyRound,
+  Building2,
+  Clock,
+  CheckCircle2,
+  XCircle,
+  ArrowRight,
+  AlertTriangle,
+  Loader2,
+  UserCheck,
+  RefreshCw,
+  LogOut,
+} from "lucide-react";
 
 interface UserJoinRequest {
   id: string;
@@ -17,38 +30,92 @@ interface UserJoinRequest {
   reviewedAt: string | null;
 }
 
+interface CurrentUser {
+  id: string;
+  email?: string;
+  name?: string;
+  emailConfirmed?: boolean;
+}
+
 export default function JoinOrganizationPage() {
   const router = useRouter();
   const [joinCode, setJoinCode] = useState("");
   const [loading, setLoading] = useState(false);
-  const [fetchingStatus, setFetchingStatus] = useState(true);
+  const [authChecking, setAuthChecking] = useState(true);
+  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
+  const [fetchingStatus, setFetchingStatus] = useState(false);
   const [existingRequests, setExistingRequests] = useState<UserJoinRequest[]>([]);
+  const [requestsError, setRequestsError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetchMyRequests();
-  }, []);
-
-  const fetchMyRequests = async () => {
+  // Load existing membership requests safely without ever logging out or redirecting the user
+  const fetchMyRequests = useCallback(async () => {
     setFetchingStatus(true);
+    setRequestsError(null);
     try {
-      const res = await fetch("/api/workspaces/join-requests/status");
-      if (res.status === 401) {
-        // user not authenticated
-        router.push("/login?redirect=/join-organization");
+      const res = await fetch("/api/workspaces/join-requests/status", {
+        cache: "no-store",
+        headers: { Pragma: "no-cache" },
+      });
+
+      if (!res.ok) {
+        // A failure of this auxiliary listing API must NEVER log out the user or trigger a full page redirect
+        if (res.status === 401) {
+          setRequestsError("Unable to load prior requests. Your session may need to be refreshed.");
+        } else {
+          setRequestsError("Unable to load past membership requests at this time.");
+        }
         return;
       }
+
       const data = await res.json();
       if (data.success && Array.isArray(data.requests)) {
         setExistingRequests(data.requests);
       }
     } catch {
-      // ignore
+      setRequestsError("Unable to connect to service to load past requests.");
     } finally {
       setFetchingStatus(false);
     }
-  };
+  }, []);
+
+  // Primary authentication check: verify session via /api/auth/user
+  useEffect(() => {
+    let isMounted = true;
+
+    async function verifyAuthAndInitialize() {
+      setAuthChecking(true);
+      try {
+        const res = await fetch("/api/auth/user", {
+          cache: "no-store",
+          headers: { Pragma: "no-cache" },
+        });
+        const data = await res.json();
+
+        if (!isMounted) return;
+
+        if (data.success && data.authenticated && data.user) {
+          setCurrentUser(data.user);
+          setAuthChecking(false);
+          // Once authenticated identity is confirmed, load past requests
+          fetchMyRequests();
+        } else {
+          // Unauthenticated visitor: redirect to login preserving destination target
+          router.replace("/login?redirect=/join-organization");
+        }
+      } catch {
+        if (!isMounted) return;
+        router.replace("/login?redirect=/join-organization");
+      }
+    }
+
+    verifyAuthAndInitialize();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [router, fetchMyRequests]);
 
   const handleJoinSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -71,6 +138,9 @@ export default function JoinOrganizationPage() {
       const data = await res.json();
 
       if (!res.ok || !data.success) {
+        if (res.status === 401) {
+          throw new Error("Your session has expired. Please sign in again to submit your join request.");
+        }
         throw new Error(data.error || "Failed to submit join request");
       }
 
@@ -84,6 +154,25 @@ export default function JoinOrganizationPage() {
     }
   };
 
+  // 1. Initial Authentication Verification Loading State (prevents layout flashing)
+  if (authChecking) {
+    return (
+      <div className="min-h-screen bg-[#060913] text-slate-100 flex flex-col justify-center items-center py-12 px-4 relative overflow-hidden">
+        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-96 h-96 bg-violet-600/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="flex flex-col items-center gap-3 text-center relative z-10">
+          <div className="w-12 h-12 rounded-xl bg-gradient-to-tr from-violet-600 to-cyan-500 flex items-center justify-center shadow-lg shadow-violet-500/30 animate-pulse">
+            <Shield className="w-6 h-6 text-white" />
+          </div>
+          <div className="flex items-center gap-2 text-sm text-slate-400 mt-2">
+            <Loader2 className="w-4 h-4 animate-spin text-violet-400" />
+            <span>Verifying authenticated session...</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // 2. Authenticated Join Organization Experience
   return (
     <div className="min-h-screen bg-[#060913] text-slate-100 flex flex-col justify-center py-12 sm:px-6 lg:px-8 relative overflow-hidden">
       <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-96 h-96 bg-violet-600/10 rounded-full blur-3xl pointer-events-none" />
@@ -110,6 +199,37 @@ export default function JoinOrganizationPage() {
 
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-xl relative z-10 px-4">
         <div className="bg-slate-900/80 backdrop-blur-xl py-8 px-6 shadow-2xl rounded-2xl border border-slate-800/80 sm:px-10">
+          {/* Authenticated User Session Chip */}
+          {currentUser && (
+            <div className="mb-6 p-3 rounded-xl bg-slate-950/70 border border-slate-800/80 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-8 h-8 rounded-lg bg-violet-950/80 border border-violet-700/60 flex items-center justify-center text-violet-300 font-bold text-xs shrink-0">
+                  {currentUser.name ? currentUser.name.charAt(0).toUpperCase() : "U"}
+                </div>
+                <div className="min-w-0">
+                  <div className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">Signed in as</div>
+                  <div className="text-xs font-semibold text-white truncate">
+                    {currentUser.name || currentUser.email}
+                  </div>
+                  {currentUser.email && (
+                    <div className="text-[10px] text-slate-400 font-mono truncate">
+                      {currentUser.email}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <Link
+                href="/login?redirect=/join-organization&switched=true"
+                className="text-[11px] font-medium text-violet-400 hover:text-violet-300 hover:underline shrink-0 flex items-center gap-1 cursor-pointer"
+                title="Sign in with a different corporate account"
+              >
+                <LogOut className="w-3 h-3" />
+                <span>Switch Account</span>
+              </Link>
+            </div>
+          )}
+
           {error && (
             <div className="mb-6 p-4 rounded-xl bg-rose-950/40 border border-rose-500/30 flex items-start gap-3">
               <AlertTriangle className="w-5 h-5 text-rose-400 flex-shrink-0 mt-0.5" />
@@ -155,8 +275,8 @@ export default function JoinOrganizationPage() {
               >
                 {loading ? (
                   <span className="flex items-center gap-2">
-                    <span className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
-                    Submitting Request...
+                    <Loader2 className="w-4 h-4 animate-spin text-white" />
+                    <span>Submitting Request...</span>
                   </span>
                 ) : (
                   <>
@@ -170,12 +290,38 @@ export default function JoinOrganizationPage() {
 
           {/* Existing Access Requests Ledger */}
           <div className="mt-8 pt-6 border-t border-slate-800">
-            <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">
-              Your Membership Requests
-            </h3>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                Your Membership Requests
+              </h3>
+              <button
+                type="button"
+                onClick={fetchMyRequests}
+                disabled={fetchingStatus}
+                className="text-[11px] text-slate-400 hover:text-slate-200 flex items-center gap-1 cursor-pointer transition-colors"
+                title="Refresh requests status"
+              >
+                <RefreshCw className={`w-3 h-3 ${fetchingStatus ? "animate-spin" : ""}`} />
+                <span>Refresh</span>
+              </button>
+            </div>
 
             {fetchingStatus ? (
-              <div className="py-4 text-center text-xs text-slate-500">Loading your requests...</div>
+              <div className="py-4 text-center text-xs text-slate-500 flex items-center justify-center gap-2">
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-violet-400" />
+                <span>Checking request status...</span>
+              </div>
+            ) : requestsError ? (
+              <div className="p-3.5 rounded-xl bg-amber-950/30 border border-amber-800/40 text-amber-300 text-xs flex items-center justify-between">
+                <span>{requestsError}</span>
+                <button
+                  type="button"
+                  onClick={fetchMyRequests}
+                  className="text-[11px] font-semibold underline hover:text-amber-200 cursor-pointer"
+                >
+                  Retry
+                </button>
+              </div>
             ) : existingRequests.length === 0 ? (
               <div className="p-4 rounded-xl bg-slate-950/40 border border-slate-800/60 text-center text-xs text-slate-400">
                 You haven&apos;t submitted any join requests yet.
@@ -253,4 +399,3 @@ export default function JoinOrganizationPage() {
     </div>
   );
 }
-

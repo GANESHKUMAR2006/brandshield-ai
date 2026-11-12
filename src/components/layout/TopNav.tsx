@@ -1,12 +1,14 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { SITE_CONFIG } from "@/config/site";
 import { BrandShieldLogo } from "@/components/ui/Icons";
 import { WorkspaceSwitcher } from "@/components/workspace/WorkspaceSwitcher";
 import { HelpTourLauncher } from "@/components/tour/HelpTourLauncher";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
+import { useSession } from "@/components/auth/AuthSessionContext";
 import {
   Menu,
   Bell,
@@ -48,27 +50,34 @@ export function TopNav({ onOpenMobileMenu }: TopNavProps) {
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [_isSearchFocused, setIsSearchFocused] = useState(false);
+  const { user, isLoading, clearSession } = useSession();
   const [userInfo, setUserInfo] = useState<UserSessionInfo>(DEFAULT_USER_INFO);
 
   const userMenuRef = useRef<HTMLDivElement>(null);
   const notifRef = useRef<HTMLDivElement>(null);
 
-  // Fetch verified user session from server
+  // Pre-load cached session profile on initial client mount to eliminate UI layout flash
   useEffect(() => {
-    let isMounted = true;
-
-    // Immediately restore cached session profile after client mount (prevents SSR hydration mismatch)
     if (typeof window !== "undefined") {
       try {
         const cached = sessionStorage.getItem("brandshield_session_profile");
         if (cached) {
           const parsed = JSON.parse(cached);
-          if (parsed && typeof parsed.name === "string" && parsed.name) {
+          const name = parsed.userName || parsed.name || "";
+          const email = parsed.userEmail || parsed.email || "";
+          if (name || email) {
+            const displayName = name || email || "Reviewer";
+            const names = displayName.trim().split(/\s+/);
+            const initials =
+              names.length > 1
+                ? `${names[0][0]}${names[names.length - 1][0]}`.toUpperCase()
+                : displayName.substring(0, 2).toUpperCase();
+
             setUserInfo({
-              name: parsed.name,
-              email: parsed.email || "",
-              role: parsed.role || "",
-              initials: parsed.initials || "U",
+              name: displayName,
+              email,
+              role: (parsed.role || "Member").replace(/_/g, " "),
+              initials,
               workspaceSlug: parsed.workspaceSlug || "dermaglow",
             });
           }
@@ -77,48 +86,31 @@ export function TopNav({ onOpenMobileMenu }: TopNavProps) {
         // Safe fallback
       }
     }
-
-    fetch("/api/auth/me")
-      .then((res) => {
-        if (!res.ok) {
-          if (res.status === 401 && typeof window !== "undefined") {
-            sessionStorage.removeItem("brandshield_session_profile");
-          }
-          return null;
-        }
-        return res.json();
-      })
-      .then((data) => {
-        if (!isMounted || !data?.user) return;
-        const u = data.user;
-        const names = (u.userName || u.userEmail || "Reviewer").split(" ");
-        const initials =
-          names.length > 1
-            ? `${names[0][0]}${names[names.length - 1][0]}`.toUpperCase()
-            : (u.userName || "R").substring(0, 2).toUpperCase();
-
-        const updated: UserSessionInfo = {
-          name: u.userName || "Reviewer",
-          email: u.userEmail || "",
-          role: u.role ? u.role.replace(/_/g, " ") : "Member",
-          initials,
-          workspaceSlug: u.workspaceSlug || "dermaglow",
-        };
-
-        if (typeof window !== "undefined") {
-          sessionStorage.setItem("brandshield_session_profile", JSON.stringify(updated));
-        }
-
-        setUserInfo(updated);
-      })
-      .catch(() => {
-        // Fallback safely without exposing incorrect identity
-      });
-
-    return () => {
-      isMounted = false;
-    };
   }, []);
+
+  // Synchronize verified user session from shared session provider
+  useEffect(() => {
+    if (user && user.isAuthenticated) {
+      const displayName = user.userName || user.userEmail || (user.isDemoFallback ? "Demo Reviewer" : "Reviewer");
+      const names = displayName.trim().split(/\s+/);
+      const initials =
+        names.length > 1
+          ? `${names[0][0]}${names[names.length - 1][0]}`.toUpperCase()
+          : displayName.substring(0, 2).toUpperCase();
+
+      const updated: UserSessionInfo = {
+        name: displayName,
+        email: user.userEmail || "",
+        role: user.role ? user.role.replace(/_/g, " ") : "Member",
+        initials,
+        workspaceSlug: user.workspaceSlug || "dermaglow",
+      };
+
+      setUserInfo(updated);
+    } else if (!isLoading && user === null) {
+      setUserInfo(DEFAULT_USER_INFO);
+    }
+  }, [user, isLoading]);
 
   // Close dropdowns when clicking outside
   useEffect(() => {
@@ -158,6 +150,7 @@ export function TopNav({ onOpenMobileMenu }: TopNavProps) {
 
   const handleSignOut = async () => {
     try {
+      clearSession();
       // 1. Client-side Supabase signOut and server-side logout in parallel
       const clientSignOut = (async () => {
         try {
@@ -179,13 +172,7 @@ export function TopNav({ onOpenMobileMenu }: TopNavProps) {
         localStorage.removeItem("active_workspace_id");
         localStorage.removeItem("active_workspace_slug");
       }
-      setUserInfo({
-        name: "",
-        email: "",
-        role: "",
-        initials: "",
-        workspaceSlug: "",
-      });
+      setUserInfo(DEFAULT_USER_INFO);
       window.location.href = "/login?signedOut=true&switched=true";
     }
   };
@@ -330,14 +317,28 @@ export function TopNav({ onOpenMobileMenu }: TopNavProps) {
 
         {/* User Profile Dropdown Menu */}
         <div className="relative" ref={userMenuRef}>
-          <button
-            type="button"
-            onClick={() => setShowUserMenu(!showUserMenu)}
-            className="flex items-center gap-2.5 pl-2 sm:pl-3 border-l border-slate-800 hover:opacity-90 transition-opacity focus:outline-none cursor-pointer"
-            aria-label="User profile menu"
-          >
-            {userInfo.name ? (
-              <>
+          {isLoading && !userInfo.name ? (
+            <div
+              className="flex items-center gap-2.5 pl-2 sm:pl-3 border-l border-slate-800 py-0.5"
+              aria-busy="true"
+              aria-label="Loading user profile"
+            >
+              <div className="w-8 h-8 rounded-full bg-slate-800/80 animate-pulse border border-slate-700/50" />
+              <div className="hidden md:flex flex-col gap-1 text-left">
+                <div className="w-20 h-2.5 bg-slate-800/80 animate-pulse rounded" />
+                <div className="w-14 h-2 bg-slate-800/60 animate-pulse rounded" />
+              </div>
+              <ChevronDown className="w-3.5 h-3.5 text-slate-600 hidden sm:block opacity-40" />
+            </div>
+          ) : userInfo.name ? (
+            <>
+              <button
+                type="button"
+                onClick={() => setShowUserMenu(!showUserMenu)}
+                className="flex items-center gap-2.5 pl-2 sm:pl-3 border-l border-slate-800 hover:opacity-90 transition-opacity focus:outline-hidden cursor-pointer"
+                aria-label="User profile menu"
+                aria-expanded={showUserMenu}
+              >
                 <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-violet-600 to-indigo-600 text-white flex items-center justify-center text-xs font-bold tracking-wider shadow-[0_0_10px_rgba(139,92,246,0.3)] border border-violet-400/30">
                   {userInfo.initials || "U"}
                 </div>
@@ -349,72 +350,78 @@ export function TopNav({ onOpenMobileMenu }: TopNavProps) {
                     {userInfo.role}
                   </span>
                 </div>
-              </>
-            ) : (
-              <div className="flex items-center gap-2 py-0.5">
-                <div className="w-8 h-8 rounded-full bg-slate-800/80 animate-pulse border border-slate-700/50" />
-                <div className="hidden md:flex flex-col gap-1 text-left">
-                  <div className="w-20 h-2.5 bg-slate-800/80 animate-pulse rounded" />
-                  <div className="w-14 h-2 bg-slate-800/60 animate-pulse rounded" />
+                <ChevronDown className="w-3.5 h-3.5 text-slate-400 hidden sm:block" />
+              </button>
+
+              {/* User Profile Popover */}
+              {showUserMenu && (
+                <div
+                  className="absolute right-0 mt-2 w-64 bg-slate-900/95 backdrop-blur-xl border border-slate-700/80 rounded-xl shadow-2xl p-3 z-50 text-xs animate-in fade-in zoom-in-95 duration-100"
+                  role="menu"
+                >
+                  {/* Profile Details */}
+                  <div className="pb-2.5 mb-2 border-b border-slate-800">
+                    <p className="font-semibold text-white truncate">{userInfo.name}</p>
+                    <p className="text-[11px] text-slate-400 truncate">{userInfo.email}</p>
+                    <div className="mt-2 flex items-center gap-1.5">
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-violet-950/80 text-violet-300 border border-violet-800/60 capitalize flex items-center gap-1">
+                        <Shield className="w-2.5 h-2.5 text-violet-400" />
+                        {userInfo.role}
+                      </span>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-800 text-slate-300 border border-slate-700">
+                        {userInfo.workspaceSlug ? userInfo.workspaceSlug.charAt(0).toUpperCase() + userInfo.workspaceSlug.slice(1) : "Workspace"}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Menu Actions */}
+                  <div className="space-y-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowUserMenu(false);
+                        router.push("/settings");
+                      }}
+                      className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800/60 transition-colors text-left cursor-pointer"
+                    >
+                      <User className="w-3.5 h-3.5 text-slate-400" />
+                      <span>Workspace Settings</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleSwitchAccount}
+                      className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800/60 transition-colors text-left cursor-pointer"
+                    >
+                      <UserCheck className="w-3.5 h-3.5 text-cyan-400" />
+                      <span>Switch Account</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleSignOut}
+                      className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-rose-300 hover:text-rose-200 hover:bg-rose-950/30 transition-colors text-left cursor-pointer border border-transparent hover:border-rose-900/40"
+                    >
+                      <LogOut className="w-3.5 h-3.5 text-rose-400" />
+                      <span>Sign Out</span>
+                    </button>
+                  </div>
                 </div>
-              </div>
-            )}
-            <ChevronDown className="w-3.5 h-3.5 text-slate-400 hidden sm:block" />
-          </button>
-
-          {/* User Profile Popover */}
-          {showUserMenu && (
-            <div
-              className="absolute right-0 mt-2 w-64 bg-slate-900/95 backdrop-blur-xl border border-slate-700/80 rounded-xl shadow-2xl p-3 z-50 text-xs animate-in fade-in zoom-in-95 duration-100"
-              role="menu"
-            >
-              {/* Profile Details */}
-              <div className="pb-2.5 mb-2 border-b border-slate-800">
-                <p className="font-semibold text-white truncate">{userInfo.name}</p>
-                <p className="text-[11px] text-slate-400 truncate">{userInfo.email}</p>
-                <div className="mt-2 flex items-center gap-1.5">
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-violet-950/80 text-violet-300 border border-violet-800/60 capitalize flex items-center gap-1">
-                    <Shield className="w-2.5 h-2.5 text-violet-400" />
-                    {userInfo.role}
-                  </span>
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-800 text-slate-300 border border-slate-700">
-                    {userInfo.workspaceSlug ? userInfo.workspaceSlug.charAt(0).toUpperCase() + userInfo.workspaceSlug.slice(1) : "Workspace"}
-                  </span>
+              )}
+            </>
+          ) : (
+            /* Unauthenticated / Guest state */
+            <div className="flex items-center pl-2 sm:pl-3 border-l border-slate-800">
+              <Link
+                href="/login"
+                className="flex items-center gap-2 py-1 px-2.5 rounded-lg bg-slate-800/70 hover:bg-slate-800 text-slate-300 hover:text-white text-xs font-medium border border-slate-700/60 hover:border-violet-500/40 transition-colors cursor-pointer"
+                aria-label="Sign in"
+              >
+                <div className="w-5 h-5 rounded-full bg-slate-700 text-slate-300 flex items-center justify-center text-[10px]">
+                  <User className="w-3 h-3" />
                 </div>
-              </div>
-
-              {/* Menu Actions */}
-              <div className="space-y-1">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowUserMenu(false);
-                    router.push("/settings");
-                  }}
-                  className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800/60 transition-colors text-left cursor-pointer"
-                >
-                  <User className="w-3.5 h-3.5 text-slate-400" />
-                  <span>Workspace Settings</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleSwitchAccount}
-                  className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800/60 transition-colors text-left cursor-pointer"
-                >
-                  <UserCheck className="w-3.5 h-3.5 text-cyan-400" />
-                  <span>Switch Account</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleSignOut}
-                  className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-rose-300 hover:text-rose-200 hover:bg-rose-950/30 transition-colors text-left cursor-pointer border border-transparent hover:border-rose-900/40"
-                >
-                  <LogOut className="w-3.5 h-3.5 text-rose-400" />
-                  <span>Sign Out</span>
-                </button>
-              </div>
+                <span className="hidden sm:inline">Sign In</span>
+              </Link>
             </div>
           )}
         </div>

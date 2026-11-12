@@ -12,16 +12,16 @@ export async function GET(request?: NextRequest) {
   try {
     const session = await resolveServerSession(undefined, request);
 
-    // 1. Fetch comprehensive compliance analytics
-    const analytics = await ComplianceAnalyticsService.getWorkspaceAnalytics(session);
+    // Execute independent queries in parallel using the existing PostgreSQL connection pool
+    const [analytics, insights, recentSubmissions, recentAuditEvents, counts] = await Promise.all([
+      // 1. Fetch comprehensive compliance analytics
+      ComplianceAnalyticsService.getWorkspaceAnalytics(session),
 
-    // 2. Fetch actionable risk and operational insights
-    const insights = await ComplianceAnalyticsService.getComplianceInsights(session);
+      // 2. Fetch actionable risk and operational insights
+      ComplianceAnalyticsService.getComplianceInsights(session),
 
-    // 3. Recent Live Submissions within workspace
-    let recentSubmissions: Array<Record<string, unknown>> = [];
-    try {
-      const recentSubsRes = await query(`
+      // 3. Recent Live Submissions within workspace
+      query(`
         SELECT 
           s.id,
           s.title,
@@ -42,16 +42,12 @@ export async function GET(request?: NextRequest) {
         GROUP BY s.id, p.name
         ORDER BY s.created_at DESC
         LIMIT 5;
-      `, [session.workspaceSlug]);
-      recentSubmissions = recentSubsRes.rows;
-    } catch {
-      recentSubmissions = [];
-    }
+      `, [session.workspaceSlug])
+        .then((res) => res.rows as Array<Record<string, unknown>>)
+        .catch(() => [] as Array<Record<string, unknown>>),
 
-    // 4. Recent Live Audit Events within workspace
-    let recentAuditEvents: Array<Record<string, unknown>> = [];
-    try {
-      const recentAuditsRes = await query(`
+      // 4. Recent Live Audit Events within workspace
+      query(`
         SELECT 
           ae.id,
           ae.actor_id,
@@ -65,17 +61,12 @@ export async function GET(request?: NextRequest) {
         WHERE w.slug = $1
         ORDER BY ae.created_at DESC
         LIMIT 5;
-      `, [session.workspaceSlug]);
-      recentAuditEvents = recentAuditsRes.rows;
-    } catch {
-      recentAuditEvents = [];
-    }
+      `, [session.workspaceSlug])
+        .then((res) => res.rows as Array<Record<string, unknown>>)
+        .catch(() => [] as Array<Record<string, unknown>>),
 
-    // 5. Query live database counts for products and approved facts
-    let totalProducts = 0;
-    let approvedFacts = 0;
-    try {
-      const countsRes = await query<{
+      // 5. Query live database counts for products and approved facts
+      query<{
         total_products: number;
         approved_facts: number;
       }>(`
@@ -86,16 +77,13 @@ export async function GET(request?: NextRequest) {
         LEFT JOIN products p ON p.workspace_id = w.id
         LEFT JOIN approved_facts af ON af.product_id = p.id AND af.approval_status = 'approved'
         WHERE w.slug = $1
-      `, [session.workspaceSlug]);
+      `, [session.workspaceSlug])
+        .then((res) => (res.rows.length > 0 ? res.rows[0] : { total_products: 0, approved_facts: 0 }))
+        .catch(() => ({ total_products: 0, approved_facts: 0 })),
+    ]);
 
-      if (countsRes.rows.length > 0) {
-        totalProducts = countsRes.rows[0].total_products;
-        approvedFacts = countsRes.rows[0].approved_facts;
-      }
-    } catch {
-      totalProducts = 0;
-      approvedFacts = 0;
-    }
+    const totalProducts = counts.total_products;
+    const approvedFacts = counts.approved_facts;
 
     // Backwards-compatible legacy stats structure with live database counts
     const legacyStats = {

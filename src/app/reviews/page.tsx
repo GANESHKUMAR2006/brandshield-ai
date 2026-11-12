@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -15,6 +15,7 @@ import {
 import { EscalationCategory } from "@/types";
 import { ClaimLifecycleStepper } from "@/components/claims/ClaimLifecycleStepper";
 import { CitationViewerModal } from "@/components/claims/CitationViewerModal";
+import { useDebounce } from "@/hooks/useDebounce";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -45,6 +46,8 @@ export default function ReviewsPage() {
   const [riskFilter, setRiskFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const debouncedSearchQuery = useDebounce(searchQuery, 300);
+  const requestSeq = useRef(0);
 
   // Action Dialog State
   const [activeActionModal, setActiveActionModal] = useState<{
@@ -65,17 +68,18 @@ export default function ReviewsPage() {
   const [reviewComments, setReviewComments] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Synchronize queue from backend whenever filters or search change
+  // Synchronize queue from backend whenever filters or debounced search change
   useEffect(() => {
-    let isMounted = true;
+    const currentSeq = ++requestSeq.current;
+    setIsLoading(true);
 
     fetchReviewQueue({
       riskLevel: riskFilter !== "all" ? riskFilter : undefined,
       reviewStatus: statusFilter !== "all" ? statusFilter : undefined,
-      search: searchQuery.trim() || undefined,
+      search: debouncedSearchQuery.trim() || undefined,
     })
       .then((res) => {
-        if (isMounted) {
+        if (requestSeq.current === currentSeq) {
           setQueue(res.data);
           setReviewer(res.reviewer);
           setError(null);
@@ -83,32 +87,35 @@ export default function ReviewsPage() {
         }
       })
       .catch((err: unknown) => {
-        if (isMounted) {
+        if (requestSeq.current === currentSeq) {
           setError(err instanceof Error ? err.message : "Failed to load review queue");
           setIsLoading(false);
         }
       });
-
-    return () => {
-      isMounted = false;
-    };
-  }, [riskFilter, statusFilter, searchQuery]);
+  }, [riskFilter, statusFilter, debouncedSearchQuery]);
 
   const refreshQueue = async () => {
     setIsLoading(true);
+    const currentSeq = ++requestSeq.current;
     try {
       const res: ReviewQueueResponse = await fetchReviewQueue({
         riskLevel: riskFilter !== "all" ? riskFilter : undefined,
         reviewStatus: statusFilter !== "all" ? statusFilter : undefined,
-        search: searchQuery.trim() || undefined,
+        search: debouncedSearchQuery.trim() || undefined,
       });
-      setQueue(res.data);
-      setReviewer(res.reviewer);
-      setError(null);
+      if (requestSeq.current === currentSeq) {
+        setQueue(res.data);
+        setReviewer(res.reviewer);
+        setError(null);
+      }
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to load review queue");
+      if (requestSeq.current === currentSeq) {
+        setError(err instanceof Error ? err.message : "Failed to load review queue");
+      }
     } finally {
-      setIsLoading(false);
+      if (requestSeq.current === currentSeq) {
+        setIsLoading(false);
+      }
     }
   };
 
@@ -288,8 +295,18 @@ export default function ReviewsPage() {
             placeholder="Search claims or campaigns..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-9 pr-3 py-1.5 text-xs rounded-xl border border-slate-700 bg-slate-950 text-slate-100 placeholder-slate-500 focus:outline-none focus:border-violet-500 shadow-inner"
+            className="w-full pl-9 pr-8 py-1.5 text-xs rounded-xl border border-slate-700 bg-slate-950 text-slate-100 placeholder-slate-500 focus:outline-none focus:border-violet-500 shadow-inner"
           />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => setSearchQuery("")}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white p-0.5 rounded cursor-pointer"
+              title="Clear search"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
       </div>
 
@@ -330,16 +347,30 @@ export default function ReviewsPage() {
                 }`}
               >
                 <div className="pb-3 border-b border-slate-800/60">
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                  {/* Top Meta Bar: Separating AI Finding from Human Workflow & Campaign */}
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 pb-2">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-[10px] uppercase font-bold text-violet-300 bg-violet-950/70 border border-violet-800/60 px-2 py-0.5 rounded">
                         {claim.claim_type.replace(/_/g, " ")}
                       </span>
                       <StatusPill status={claim.verification_status} />
                       <span className="text-slate-600">·</span>
-                      <span className="text-xs font-semibold text-slate-300">
-                        Human Status: <StatusPill status={claim.review_status || "pending"} />
-                      </span>
+                      <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-slate-950/80 border border-slate-800 text-[11px]">
+                        <span className="text-slate-400 font-medium">Human Decision:</span>
+                        <span className={`font-semibold uppercase text-[10px] ${
+                          claim.review_status === "approved"
+                            ? "text-emerald-300"
+                            : claim.review_status === "rejected"
+                            ? "text-rose-300"
+                            : claim.review_status === "modified"
+                            ? "text-cyan-300"
+                            : claim.review_status === "escalated"
+                            ? "text-purple-300"
+                            : "text-amber-300"
+                        }`}>
+                          {claim.review_status?.replace(/_/g, " ") || "Pending Sign-Off"}
+                        </span>
+                      </div>
                       {claim.risk_level && (
                         <Badge variant={riskBadgeMap[claim.risk_level] || "default"} size="sm">
                           {claim.risk_level.toUpperCase()} RISK
@@ -352,9 +383,15 @@ export default function ReviewsPage() {
                     </span>
                   </div>
 
-                  <h3 className="text-base text-white mt-2.5 font-semibold leading-relaxed">
-                    &ldquo;{claim.claim_text}&rdquo;
-                  </h3>
+                  {/* Prominent Marketing Assertion */}
+                  <div className="mt-3 p-3.5 rounded-xl bg-slate-950/80 border border-slate-800/80">
+                    <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 block mb-1">
+                      Marketing Assertion Under Review
+                    </span>
+                    <h3 className="text-base text-white font-semibold leading-relaxed">
+                      &ldquo;{claim.claim_text}&rdquo;
+                    </h3>
+                  </div>
                 </div>
 
                 <div className="space-y-4 pt-4">
@@ -439,53 +476,71 @@ export default function ReviewsPage() {
                     <div className="text-[11px] text-slate-400">
                       Claim ID: <code className="font-mono text-violet-400">{claim.id.slice(0, 8)}...</code> ·
                       Product: <strong className="text-white">{claim.product_name || "DermaGlow"}</strong>
+                      {claim.verification_status === "supported" && claim.review_status !== "approved" && (
+                        <span className="block text-[10px] text-emerald-400/90 mt-0.5">
+                          ✓ AI supported by evidence dossier — awaiting formal human reviewer sign-off to clear publication gate.
+                        </span>
+                      )}
                     </div>
 
                     <div data-tour="reviews-decision-actions" className="flex items-center gap-2 flex-wrap">
-                      <Button
-                        variant="danger"
-                        size="sm"
-                        onClick={() => handleOpenAction(claim, "reject")}
-                      >
-                        Reject
-                      </Button>
-
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleOpenAction(claim, "escalate")}
-                      >
-                        Escalate
-                      </Button>
-
-                      {claim.suggested_correction && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleOpenAction(claim, "modify")}
-                          className="border-cyan-800/60 text-cyan-300 hover:bg-cyan-950/40"
-                        >
-                          Apply Revision
-                        </Button>
-                      )}
-
-                      {requiresOverride ? (
-                        <Button
-                          variant="primary"
-                          size="sm"
-                          onClick={() => handleOpenAction(claim, "override")}
-                          className="bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 text-white border-amber-500/30"
-                        >
-                          Authorize Override
-                        </Button>
+                      {reviewer && reviewer.role === "viewer" ? (
+                        <span className="px-3 py-1.5 rounded-lg bg-slate-950/80 border border-slate-800 text-[11px] text-slate-400 italic">
+                          Read-only viewer account (compliance decision actions disabled)
+                        </span>
                       ) : (
-                        <Button
-                          variant="primary"
-                          size="sm"
-                          onClick={() => handleOpenAction(claim, "approve")}
-                        >
-                          Approve Sign-Off
-                        </Button>
+                        <>
+                          <Button
+                            variant="danger"
+                            size="sm"
+                            onClick={() => handleOpenAction(claim, "reject")}
+                            title="Reject claim permanently from marketing publication"
+                          >
+                            Reject
+                          </Button>
+
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleOpenAction(claim, "escalate")}
+                            title="Escalate to legal or specialized medical compliance"
+                          >
+                            Escalate
+                          </Button>
+
+                          {claim.suggested_correction && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleOpenAction(claim, "modify")}
+                              className="border-cyan-800/60 text-cyan-300 hover:bg-cyan-950/40"
+                              title="Adopt AI suggested defensible correction and re-verify"
+                            >
+                              Apply Revision
+                            </Button>
+                          )}
+
+                          {requiresOverride ? (
+                            <Button
+                              variant="primary"
+                              size="sm"
+                              onClick={() => handleOpenAction(claim, "override")}
+                              className="bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 text-white border-amber-500/30"
+                              title="Provide required compliance justification to override evidence gap"
+                            >
+                              Authorize Override
+                            </Button>
+                          ) : (
+                            <Button
+                              variant="primary"
+                              size="sm"
+                              onClick={() => handleOpenAction(claim, "approve")}
+                              title="Formally sign-off and approve claim for marketing publication"
+                            >
+                              Approve Sign-Off
+                            </Button>
+                          )}
+                        </>
                       )}
                     </div>
                   </div>

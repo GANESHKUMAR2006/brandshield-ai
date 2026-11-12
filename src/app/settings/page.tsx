@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Button } from "@/components/ui/Button";
@@ -12,6 +12,7 @@ import { InviteMemberModal } from "@/components/workspace/InviteMemberModal";
 import { ArchiveOrganizationModal } from "@/components/workspace/ArchiveOrganizationModal";
 import { RolesManagementSection } from "@/components/workspace/RolesManagementSection";
 import { useTour } from "@/components/tour/TourContext";
+import { useSession } from "@/components/auth/AuthSessionContext";
 import {
   fetchWorkspaceMembers,
   fetchWorkspaceInvitations,
@@ -129,6 +130,7 @@ const DEFAULT_INVITATIONS: WorkspaceInvitationItem[] = [
 
 export default function SettingsPage() {
   const { openWelcome } = useTour();
+  const { user } = useSession();
   const [activeTab, setActiveTab] = useState<"general" | "team" | "roles" | "diagnostics">("general");
 
   // Modals
@@ -151,6 +153,7 @@ export default function SettingsPage() {
   const [invitations, setInvitations] = useState<WorkspaceInvitationItem[]>(DEFAULT_INVITATIONS);
   const [customRoles, setCustomRoles] = useState<RoleItem[]>([]);
   const [isLoadingTeam, setIsLoadingTeam] = useState(false);
+  const [teamError, setTeamError] = useState<string | null>(null);
   const [teamNotification, setTeamNotification] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
   // Organization Join Code state
@@ -160,6 +163,8 @@ export default function SettingsPage() {
     updatedAt: string | null;
   } | null>(null);
   const [activeJoinCode, setActiveJoinCode] = useState<string | null>(null);
+  const [isLoadingJoinCode, setIsLoadingJoinCode] = useState(false);
+  const [joinCodeError, setJoinCodeError] = useState<string | null>(null);
   const [isRotatingJoinCode, setIsRotatingJoinCode] = useState(false);
   const [isRevokingJoinCode, setIsRevokingJoinCode] = useState(false);
   const [joinCodeCopied, setJoinCodeCopied] = useState(false);
@@ -180,12 +185,17 @@ export default function SettingsPage() {
   }
   const [joinRequests, setJoinRequests] = useState<JoinRequestItem[]>([]);
   const [isLoadingJoinRequests, setIsLoadingJoinRequests] = useState(false);
+  const [joinRequestsError, setJoinRequestsError] = useState<string | null>(null);
   const [requestToApprove, setRequestToApprove] = useState<JoinRequestItem | null>(null);
   const [approvalRole, setApprovalRole] = useState<ReviewerRole>("compliance_reviewer");
   const [isApproving, setIsApproving] = useState(false);
   const [requestToReject, setRequestToReject] = useState<JoinRequestItem | null>(null);
   const [rejectionReason, setRejectionReason] = useState("");
   const [isRejecting, setIsRejecting] = useState(false);
+
+  // Request deduplication & cache tracker refs
+  const loadedWorkspaceIdRef = useRef<string | null>(null);
+  const loadedTeamWorkspaceIdRef = useRef<string | null>(null);
 
   // Email Diagnostic Test state
   const [testEmailRecipient, setTestEmailRecipient] = useState("brandshield11@gmail.com");
@@ -203,8 +213,12 @@ export default function SettingsPage() {
   const [isRemoving, setIsRemoving] = useState(false);
   const [removeError, setRemoveError] = useState<string | null>(null);
 
-  // Sync workspace and role from server session / localStorage
+  // Synchronize workspace and role from shared session provider & localStorage
   useEffect(() => {
+    let isMounted = true;
+    let storedId = "";
+    let storedSlug = "";
+
     if (typeof window !== "undefined") {
       try {
         const cached = sessionStorage.getItem("brandshield_session_profile");
@@ -213,60 +227,81 @@ export default function SettingsPage() {
           if (parsed?.name) setUserName(parsed.name);
           if (parsed?.email) setUserEmail(parsed.email);
         }
+        storedId = localStorage.getItem("active_workspace_id") || "";
+        storedSlug = localStorage.getItem("active_workspace_slug") || "";
+        if (storedId) setWorkspaceId(storedId);
+        if (storedSlug) {
+          setWorkspaceSlug(storedSlug);
+          setWorkspaceName(storedSlug.charAt(0).toUpperCase() + storedSlug.slice(1));
+        }
       } catch {}
     }
 
-    fetch("/api/auth/me")
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (data?.user) {
-          if (data.user.userName) setUserName(data.user.userName);
-          if (data.user.userEmail) setUserEmail(data.user.userEmail);
-          if (data.user.workspaceId) setWorkspaceId(data.user.workspaceId);
-          if (data.user.workspaceSlug) {
-            setWorkspaceSlug(data.user.workspaceSlug);
-            setWorkspaceName(data.user.workspaceSlug.charAt(0).toUpperCase() + data.user.workspaceSlug.slice(1));
-          }
-          if (data.user.role) {
-            setUserRole(data.user.role as ReviewerRole);
-          }
-        } else if (typeof window !== "undefined") {
-          const storedId = localStorage.getItem("active_workspace_id");
-          const storedSlug = localStorage.getItem("active_workspace_slug");
-          if (storedId) setWorkspaceId(storedId);
-          if (storedSlug) {
-            setWorkspaceSlug(storedSlug);
-            setWorkspaceName(storedSlug.charAt(0).toUpperCase() + storedSlug.slice(1));
-          }
+    if (user && user.isAuthenticated && !user.isDemoFallback) {
+      if (user.userName) setUserName(user.userName);
+      if (user.userEmail) setUserEmail(user.userEmail);
+      const wsId = user.workspaceId || storedId;
+      if (wsId) {
+        setWorkspaceId(wsId);
+        if (user.workspaceSlug) {
+          setWorkspaceSlug(user.workspaceSlug);
+          setWorkspaceName(
+            user.workspaceSlug.charAt(0).toUpperCase() + user.workspaceSlug.slice(1)
+          );
         }
-      })
-      .catch(() => {
-        if (typeof window !== "undefined") {
-          const storedId = localStorage.getItem("active_workspace_id");
-          const storedSlug = localStorage.getItem("active_workspace_slug");
-          if (storedId) setWorkspaceId(storedId);
-          if (storedSlug) {
-            setWorkspaceSlug(storedSlug);
-            setWorkspaceName(storedSlug.charAt(0).toUpperCase() + storedSlug.slice(1));
-          }
+        if (user.role) {
+          setUserRole(user.role as ReviewerRole);
         }
-      });
-  }, []);
+        if (loadedWorkspaceIdRef.current !== wsId) {
+          loadedWorkspaceIdRef.current = wsId;
+          fetchWorkspaceDetails(wsId)
+            .then((ws) => {
+              if (isMounted && ws) {
+                if (ws.name) setWorkspaceName(ws.name);
+                if (ws.slug) setWorkspaceSlug(ws.slug);
+              }
+            })
+            .catch(() => {});
+        }
+      }
+    } else if (storedId && loadedWorkspaceIdRef.current !== storedId) {
+      loadedWorkspaceIdRef.current = storedId;
+      fetchWorkspaceDetails(storedId)
+        .then((ws) => {
+          if (isMounted && ws) {
+            if (ws.name) setWorkspaceName(ws.name);
+            if (ws.slug) setWorkspaceSlug(ws.slug);
+          }
+        })
+        .catch(() => {});
+    }
 
-  // Fetch full workspace metadata when workspaceId is available
+    return () => {
+      isMounted = false;
+    };
+  }, [user]);
+
+  // Update workspace metadata when workspaceId changes to a different workspace
   useEffect(() => {
-    if (workspaceId) {
+    if (workspaceId && loadedWorkspaceIdRef.current !== workspaceId) {
+      loadedWorkspaceIdRef.current = workspaceId;
+      loadedTeamWorkspaceIdRef.current = null;
       fetchWorkspaceDetails(workspaceId)
         .then((ws) => {
           if (ws?.name) setWorkspaceName(ws.name);
           if (ws?.slug) setWorkspaceSlug(ws.slug);
         })
         .catch(() => {});
+      if (activeTab === "team") {
+        loadTeamData(true);
+      }
     }
-  }, [workspaceId]);
+  }, [workspaceId, activeTab]);
 
   const loadJoinCodeStatus = useCallback(async () => {
     if (!workspaceId) return;
+    setIsLoadingJoinCode(true);
+    setJoinCodeError(null);
     try {
       const res = await fetch(`/api/workspaces/${workspaceId}/join-code`);
       if (res.ok) {
@@ -278,15 +313,21 @@ export default function SettingsPage() {
             updatedAt: data.updatedAt,
           });
         }
+      } else {
+        const data = await res.json().catch(() => null);
+        if (data?.error) setJoinCodeError(data.error);
       }
-    } catch {
-      // ignore
+    } catch (err) {
+      setJoinCodeError(err instanceof Error ? err.message : "Failed to load join code");
+    } finally {
+      setIsLoadingJoinCode(false);
     }
   }, [workspaceId]);
 
   const loadJoinRequests = useCallback(async () => {
     if (!workspaceId) return;
     setIsLoadingJoinRequests(true);
+    setJoinRequestsError(null);
     try {
       const res = await fetch(`/api/workspaces/${workspaceId}/join-requests`);
       if (res.ok) {
@@ -294,37 +335,124 @@ export default function SettingsPage() {
         if (data.success && Array.isArray(data.requests)) {
           setJoinRequests(data.requests);
         }
+      } else {
+        const data = await res.json().catch(() => null);
+        if (data?.error) setJoinRequestsError(data.error);
       }
-    } catch {
-      // ignore
+    } catch (err) {
+      setJoinRequestsError(err instanceof Error ? err.message : "Failed to load join requests");
     } finally {
       setIsLoadingJoinRequests(false);
     }
   }, [workspaceId]);
 
-  const loadTeamData = useCallback(async () => {
-    if (!workspaceId) return;
-    setIsLoadingTeam(true);
-    try {
-      const [membersData, invitesData, rolesData] = await Promise.all([
-        fetchWorkspaceMembers(workspaceId).catch(() => DEFAULT_MEMBERS),
-        fetchWorkspaceInvitations(workspaceId).catch(() => DEFAULT_INVITATIONS),
-        fetchWorkspaceRoles(workspaceId).catch(() => null),
-      ]);
-      setMembers(membersData && membersData.length > 0 ? membersData : DEFAULT_MEMBERS);
-      setInvitations(invitesData || []);
-      if (rolesData && rolesData.customRoles) {
-        setCustomRoles(rolesData.customRoles);
+  // Tab-specific concurrent team data loading
+  const loadTeamData = useCallback(
+    async (force: boolean = false) => {
+      if (!workspaceId) return;
+
+      // Prevent duplicate fetches when toggling back and forth across tabs
+      if (!force && loadedTeamWorkspaceIdRef.current === workspaceId) {
+        return;
       }
-      await Promise.all([loadJoinCodeStatus(), loadJoinRequests()]);
-    } catch {
-      // Use fallback
-      setMembers(DEFAULT_MEMBERS);
-      setInvitations(DEFAULT_INVITATIONS);
-    } finally {
-      setIsLoadingTeam(false);
-    }
-  }, [workspaceId, loadJoinCodeStatus, loadJoinRequests]);
+
+      setIsLoadingTeam(true);
+      setIsLoadingJoinCode(true);
+      setIsLoadingJoinRequests(true);
+      setTeamError(null);
+      setJoinCodeError(null);
+      setJoinRequestsError(null);
+
+      try {
+        // Execute all 5 independent team section queries concurrently via Promise.allSettled
+        const [membersResult, invitesResult, rolesResult, joinCodeResult, joinRequestsResult] =
+          await Promise.allSettled([
+            fetchWorkspaceMembers(workspaceId),
+            fetchWorkspaceInvitations(workspaceId),
+            fetchWorkspaceRoles(workspaceId),
+            fetch(`/api/workspaces/${workspaceId}/join-code`).then(async (r) => {
+              const data = await r.json().catch(() => null);
+              if (!r.ok || !data?.success) throw new Error(data?.error || "Failed to load join code");
+              return data;
+            }),
+            fetch(`/api/workspaces/${workspaceId}/join-requests`).then(async (r) => {
+              const data = await r.json().catch(() => null);
+              if (!r.ok || !data?.success) throw new Error(data?.error || "Failed to load join requests");
+              return data;
+            }),
+          ]);
+
+        // 1. Members
+        if (membersResult.status === "fulfilled" && Array.isArray(membersResult.value)) {
+          setMembers(membersResult.value.length > 0 ? membersResult.value : DEFAULT_MEMBERS);
+        } else {
+          setMembers(DEFAULT_MEMBERS);
+          if (membersResult.status === "rejected") {
+            setTeamError(
+              membersResult.reason instanceof Error
+                ? membersResult.reason.message
+                : "Failed to load workspace members"
+            );
+          }
+        }
+
+        // 2. Invitations
+        if (invitesResult.status === "fulfilled" && Array.isArray(invitesResult.value)) {
+          setInvitations(invitesResult.value);
+        } else {
+          setInvitations(DEFAULT_INVITATIONS);
+        }
+
+        // 3. Custom Roles
+        if (rolesResult.status === "fulfilled" && rolesResult.value?.customRoles) {
+          setCustomRoles(rolesResult.value.customRoles);
+        }
+
+        setIsLoadingTeam(false);
+
+        // 4. Join Code Status (independent section)
+        if (joinCodeResult.status === "fulfilled" && joinCodeResult.value) {
+          setJoinCodeStatus({
+            hasActiveCode: joinCodeResult.value.hasActiveCode,
+            enabled: joinCodeResult.value.enabled,
+            updatedAt: joinCodeResult.value.updatedAt,
+          });
+        } else if (joinCodeResult.status === "rejected") {
+          setJoinCodeError(
+            joinCodeResult.reason instanceof Error
+              ? joinCodeResult.reason.message
+              : "Failed to load join code status"
+          );
+        }
+        setIsLoadingJoinCode(false);
+
+        // 5. Join Requests (independent section)
+        if (
+          joinRequestsResult.status === "fulfilled" &&
+          joinRequestsResult.value?.requests &&
+          Array.isArray(joinRequestsResult.value.requests)
+        ) {
+          setJoinRequests(joinRequestsResult.value.requests);
+        } else if (joinRequestsResult.status === "rejected") {
+          setJoinRequestsError(
+            joinRequestsResult.reason instanceof Error
+              ? joinRequestsResult.reason.message
+              : "Failed to load join requests"
+          );
+        }
+        setIsLoadingJoinRequests(false);
+
+        loadedTeamWorkspaceIdRef.current = workspaceId;
+      } catch {
+        setMembers(DEFAULT_MEMBERS);
+        setInvitations(DEFAULT_INVITATIONS);
+        setIsLoadingTeam(false);
+        setIsLoadingJoinCode(false);
+        setIsLoadingJoinRequests(false);
+      }
+    },
+    [workspaceId]
+  );
 
   const handleGenerateJoinCode = async () => {
     if (!workspaceId) return;
@@ -407,7 +535,7 @@ export default function SettingsPage() {
       });
       setTimeout(() => setTeamNotification(null), 5000);
       setRequestToApprove(null);
-      await loadTeamData();
+      await loadTeamData(true);
     } catch (err) {
       setTeamNotification({
         type: "error",
@@ -439,7 +567,7 @@ export default function SettingsPage() {
       setTimeout(() => setTeamNotification(null), 4000);
       setRequestToReject(null);
       setRejectionReason("");
-      await loadTeamData();
+      await loadTeamData(true);
     } catch (err) {
       setTeamNotification({
         type: "error",
@@ -486,7 +614,7 @@ export default function SettingsPage() {
   };
 
   useEffect(() => {
-    if (activeTab === "team" || activeTab === "roles") {
+    if (activeTab === "team") {
       loadTeamData();
     }
   }, [activeTab, loadTeamData]);
@@ -652,7 +780,18 @@ export default function SettingsPage() {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => loadTeamData()}
+            onClick={() => {
+              if (activeTab === "team") {
+                loadTeamData(true);
+              } else if (activeTab === "general" && workspaceId) {
+                fetchWorkspaceDetails(workspaceId)
+                  .then((ws) => {
+                    if (ws?.name) setWorkspaceName(ws.name);
+                    if (ws?.slug) setWorkspaceSlug(ws.slug);
+                  })
+                  .catch(() => {});
+              }
+            }}
             className="flex items-center gap-1.5"
           >
             <RefreshCw className="w-3.5 h-3.5" />
@@ -1531,7 +1670,10 @@ export default function SettingsPage() {
           workspaceId={workspaceId}
           workspaceName={workspaceName}
           userRole={userRole}
-          onRolesUpdated={loadTeamData}
+          onRolesUpdated={() => {
+            loadedTeamWorkspaceIdRef.current = null;
+            loadTeamData(true);
+          }}
         />
       )}
 
@@ -1778,7 +1920,7 @@ export default function SettingsPage() {
         workspaceId={workspaceId}
         workspaceName={workspaceName}
         onClose={() => setInviteModalOpen(false)}
-        onInvited={() => loadTeamData()}
+        onInvited={() => loadTeamData(true)}
       />
 
       {/* Archive Organization Modal */}

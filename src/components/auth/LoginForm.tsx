@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useSession } from "@/components/auth/AuthSessionContext";
 import {
   Building2,
   Mail,
@@ -46,6 +47,7 @@ const DEMO_ACCOUNTS: DemoAccount[] = [
 export function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { refreshSession, clearSession } = useSession();
   const redirectTo = searchParams.get("redirect") || "/dashboard";
   const switchedParam = searchParams.get("switched") === "true";
   const signedOutParam = searchParams.get("signedOut") === "true";
@@ -147,6 +149,7 @@ export function LoginForm() {
       sessionStorage.removeItem("brandshield_session_profile");
     }
 
+    clearSession();
     setExistingUser(null);
     setEmail("");
     setPassword("");
@@ -205,8 +208,11 @@ export function LoginForm() {
         sessionStorage.setItem(
           "brandshield_session_profile",
           JSON.stringify({
+            userId: data.user.id || data.user.userId,
             name: data.user.name,
+            userName: data.user.name,
             email: data.user.email,
+            userEmail: data.user.email,
             role: data.user.role,
             workspaceId: data.user.workspaceId,
             workspaceSlug: data.user.workspaceSlug,
@@ -218,6 +224,13 @@ export function LoginForm() {
         if (data.user.workspaceSlug) {
           localStorage.setItem("active_workspace_slug", data.user.workspaceSlug);
         }
+      }
+
+      // Synchronize in-memory shared session context immediately
+      try {
+        await refreshSession();
+      } catch {
+        // Fallback to cache
       }
 
       // Success state: show confirmation message and redirect immediately
@@ -301,7 +314,13 @@ export function LoginForm() {
               onClick={() => router.push(redirectTo)}
               className="w-full h-11 bg-[#c5b4fd] hover:bg-[#d8b4fe] active:scale-[0.99] text-[#151028] font-semibold text-xs sm:text-sm rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer shadow-md"
             >
-              <span>Continue to Workspace</span>
+              <span>
+                {redirectTo === "/join-organization"
+                  ? "Continue to Join Organization"
+                  : redirectTo === "/dashboard"
+                  ? "Continue to Workspace"
+                  : "Continue"}
+              </span>
               <ArrowRight className="w-4 h-4 text-[#151028]" />
             </button>
 
@@ -336,6 +355,17 @@ export function LoginForm() {
               Sign in to access your organization&apos;s marketing governance workspace.
             </p>
           </div>
+
+          {/* Join Organization Notice */}
+          {!switchNotice && !error && redirectTo === "/join-organization" && (
+            <div
+              role="status"
+              className="p-3.5 mb-5 rounded-xl bg-violet-950/40 border border-violet-800/60 flex items-center gap-2.5 text-xs text-violet-300 animate-in fade-in"
+            >
+              <Building2 className="w-4 h-4 text-violet-400 shrink-0" />
+              <span>Please sign in with your corporate account to submit an organization join request.</span>
+            </div>
+          )}
 
           {/* Account Switching Notice */}
           {switchNotice && (

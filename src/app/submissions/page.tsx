@@ -7,7 +7,7 @@ import { StatusPill } from "@/components/ui/StatusPill";
 import { Badge } from "@/components/ui/Badge";
 import {
   fetchSubmissions,
-  fetchSourcesData,
+  fetchProducts,
   LiveSubmission,
   LiveProduct,
 } from "@/lib/api-client";
@@ -42,14 +42,12 @@ export default function SubmissionsPage() {
     setIsLoading(true);
     setError(null);
     try {
-      const [subs, sources] = await Promise.all([
+      const [subs, prods] = await Promise.all([
         fetchSubmissions(),
-        fetchSourcesData().catch(() => ({ products: [] })),
+        fetchProducts().catch(() => [] as LiveProduct[]),
       ]);
       setSubmissions(subs);
-      if ("products" in sources) {
-        setProducts(sources.products);
-      }
+      setProducts(prods);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load submissions");
     } finally {
@@ -58,31 +56,8 @@ export default function SubmissionsPage() {
   }, []);
 
   useEffect(() => {
-    let isMounted = true;
-    Promise.all([
-      fetchSubmissions(),
-      fetchSourcesData().catch(() => ({ products: [] })),
-    ])
-      .then(([subs, sources]) => {
-        if (isMounted) {
-          setSubmissions(subs);
-          if ("products" in sources) {
-            setProducts(sources.products);
-          }
-          setIsLoading(false);
-        }
-      })
-      .catch((err) => {
-        if (isMounted) {
-          setError(err instanceof Error ? err.message : "Failed to load submissions");
-          setIsLoading(false);
-        }
-      });
-
-    return () => {
-      isMounted = false;
-    };
-  }, []);
+    loadData();
+  }, [loadData]);
 
   const searchQ = searchQuery.trim().toLowerCase();
   const filteredSubmissions = submissions.filter((sub) => {

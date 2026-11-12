@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { ReviewerRole } from "@/types";
 import { TourStep, UserTourState } from "@/types/tour";
 import { ROLE_TOUR_CONFIGS, PAGE_TOURS } from "@/lib/tour/tour-config";
+import { useSession } from "@/components/auth/AuthSessionContext";
 
 interface ActiveTourSession {
   tourId: string;
@@ -142,30 +143,22 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
     } catch {}
   }, [pathname]);
 
-  // Verify authoritative session from server
+  const { user } = useSession();
+
+  // Synchronize authoritative session from shared session provider
   useEffect(() => {
-    let isMounted = true;
-    fetch("/api/auth/me")
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (!isMounted || !data?.user) return;
-        const u = data.user;
-        setUserId(u.userId || "");
-        setUserName(u.userName || "Team Member");
-        setUserEmail(u.userEmail || "");
-        if (u.role && ["admin", "compliance_reviewer", "legal_reviewer", "creator", "viewer"].includes(u.role)) {
-          setUserRole(u.role as ReviewerRole);
-        }
-        if (u.workspaceSlug) setWorkspaceSlug(u.workspaceSlug);
+    if (!user || !user.isAuthenticated || user.isDemoFallback) return;
 
-        checkFirstLoginExperience(u.userId || "", u.workspaceSlug || "dermaglow");
-      })
-      .catch(() => {});
+    setUserId(user.userId || "");
+    setUserName(user.userName || "Team Member");
+    setUserEmail(user.userEmail || "");
+    if (user.role && ["admin", "compliance_reviewer", "legal_reviewer", "creator", "viewer"].includes(user.role)) {
+      setUserRole(user.role as ReviewerRole);
+    }
+    if (user.workspaceSlug) setWorkspaceSlug(user.workspaceSlug);
 
-    return () => {
-      isMounted = false;
-    };
-  }, [checkFirstLoginExperience]);
+    checkFirstLoginExperience(user.userId || "", user.workspaceSlug || "dermaglow");
+  }, [user, checkFirstLoginExperience]);
 
   const saveTourState = useCallback(
     (updates: Partial<UserTourState>) => {

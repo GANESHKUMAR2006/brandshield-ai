@@ -7,6 +7,12 @@ import { AuditService } from "@/lib/audit/audit-service";
 import { EmailService } from "@/lib/email/email-service";
 import { DistributedRateLimiter } from "@/lib/rate-limit/distributed-rate-limiter";
 
+const NO_CACHE_HEADERS = {
+  "Cache-Control": "no-store, no-cache, must-revalidate, private",
+  Pragma: "no-cache",
+  Expires: "0",
+};
+
 const joinRequestSchema = z.object({
   joinCode: z.string().min(4, "Organization join code is required").max(32),
 });

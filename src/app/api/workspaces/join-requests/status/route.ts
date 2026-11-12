@@ -3,6 +3,12 @@ import crypto from "crypto";
 import { resolveAuthenticatedUser, isValidUUID } from "@/lib/auth/server-session";
 import { query } from "@/lib/db/server-db";
 
+const NO_CACHE_HEADERS = {
+  "Cache-Control": "no-store, no-cache, must-revalidate, private",
+  Pragma: "no-cache",
+  Expires: "0",
+};
+
 /**
  * GET /api/workspaces/join-requests/status
  * Fetches all join requests submitted by the currently authenticated user.
@@ -11,11 +17,17 @@ export async function GET(request: NextRequest) {
   try {
     const user = await resolveAuthenticatedUser(request);
     if (!user || !user.isAuthenticated) {
-      return NextResponse.json({ success: false, error: "Authentication required" }, { status: 401 });
+      return NextResponse.json(
+        { success: false, error: "Authentication required" },
+        { status: 401, headers: NO_CACHE_HEADERS }
+      );
     }
 
     if (!isValidUUID(user.id)) {
-      return NextResponse.json({ success: false, requests: [] });
+      return NextResponse.json(
+        { success: false, requests: [] },
+        { headers: NO_CACHE_HEADERS }
+      );
     }
 
     const res = await query<{
@@ -38,26 +50,29 @@ export async function GET(request: NextRequest) {
       [user.id]
     );
 
-    return NextResponse.json({
-      success: true,
-      requests: res.rows.map((r) => ({
-        id: r.id,
-        workspaceId: r.workspace_id,
-        organizationName: r.workspace_name,
-        organizationSlug: r.workspace_slug,
-        status: r.status,
-        assignedRole: r.assigned_role,
-        rejectionReason: r.rejection_reason,
-        createdAt: r.created_at,
-        reviewedAt: r.reviewed_at,
-      })),
-    });
+    return NextResponse.json(
+      {
+        success: true,
+        requests: res.rows.map((r) => ({
+          id: r.id,
+          workspaceId: r.workspace_id,
+          organizationName: r.workspace_name,
+          organizationSlug: r.workspace_slug,
+          status: r.status,
+          assignedRole: r.assigned_role,
+          rejectionReason: r.rejection_reason,
+          createdAt: r.created_at,
+          reviewedAt: r.reviewed_at,
+        })),
+      },
+      { headers: NO_CACHE_HEADERS }
+    );
   } catch (err) {
     const correlationId = crypto.randomUUID();
     console.error(`[GET /api/workspaces/join-requests/status Error] [${correlationId}]:`, err);
     return NextResponse.json(
       { success: false, error: "Failed to fetch join request status", correlationId },
-      { status: 500 }
+      { status: 500, headers: NO_CACHE_HEADERS }
     );
   }
 }

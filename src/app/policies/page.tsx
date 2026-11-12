@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import {
   fetchPolicies,
@@ -28,6 +28,8 @@ import {
   ReviewerRole,
 } from "@/types";
 import { formatDateTime } from "@/lib/utils/formatters";
+import { useDebounce } from "@/hooks/useDebounce";
+import { useSession } from "@/components/auth/AuthSessionContext";
 import {
   ShieldAlert,
   CheckCircle2,
@@ -153,6 +155,8 @@ export default function PoliciesPage() {
 
   // Filters
   const [search, setSearch] = useState("");
+  const debouncedSearch = useDebounce(search, 300);
+  const requestSeq = useRef(0);
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [severityFilter, setSeverityFilter] = useState<string>("all");
@@ -203,33 +207,37 @@ export default function PoliciesPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [showJsonPreview, setShowJsonPreview] = useState(false);
 
-  // Load user session role
+  const { user } = useSession();
+
+  // Load user session role from shared session provider
   useEffect(() => {
-    fetch("/api/auth/me")
-      .then((r) => r.json())
-      .then((data) => {
-        if (data?.user?.role) setUserRole(data.user.role);
-      })
-      .catch(() => {});
-  }, []);
+    if (user?.role) setUserRole(user.role);
+  }, [user]);
 
   const loadPolicies = useCallback(() => {
+    const currentSeq = ++requestSeq.current;
+    setIsLoading(true);
+
     fetchPolicies({
       category: categoryFilter !== "all" ? categoryFilter : undefined,
       status: statusFilter !== "all" ? statusFilter : undefined,
       severity: severityFilter !== "all" ? severityFilter : undefined,
-      search: search.trim() ? search.trim() : undefined,
+      search: debouncedSearch.trim() ? debouncedSearch.trim() : undefined,
     })
       .then((res) => {
-        setPolicies(res.data);
-        setError(null);
-        setIsLoading(false);
+        if (requestSeq.current === currentSeq) {
+          setPolicies(res.data);
+          setError(null);
+          setIsLoading(false);
+        }
       })
       .catch((err: unknown) => {
-        setError(err instanceof Error ? err.message : "Failed to load policies");
-        setIsLoading(false);
+        if (requestSeq.current === currentSeq) {
+          setError(err instanceof Error ? err.message : "Failed to load policies");
+          setIsLoading(false);
+        }
       });
-  }, [categoryFilter, statusFilter, severityFilter, search]);
+  }, [categoryFilter, statusFilter, severityFilter, debouncedSearch]);
 
   useEffect(() => {
     loadPolicies();
@@ -625,8 +633,18 @@ export default function PoliciesPage() {
                   placeholder="Search code, name, or description..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  className="w-full pl-9 pr-3 py-1.5 text-xs rounded-xl border border-slate-700 bg-slate-950 text-slate-100 placeholder-slate-500 focus:outline-none focus:border-violet-500 shadow-inner"
+                  className="w-full pl-9 pr-8 py-1.5 text-xs rounded-xl border border-slate-700 bg-slate-950 text-slate-100 placeholder-slate-500 focus:outline-none focus:border-violet-500 shadow-inner"
                 />
+                {search && (
+                  <button
+                    type="button"
+                    onClick={() => setSearch("")}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white p-0.5 rounded cursor-pointer"
+                    title="Clear search"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </div>
 
               <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">

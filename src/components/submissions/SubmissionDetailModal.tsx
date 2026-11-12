@@ -318,9 +318,9 @@ export function SubmissionDetailModal({
         {details && (
           <div className="mx-5 mt-4 p-3.5 rounded-xl border border-slate-800 bg-slate-900/60 backdrop-blur-md flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-xs shadow-lg">
             <div className="flex items-center gap-3">
-              <div className="flex flex-col gap-0.5">
-                <div className="flex items-center gap-2">
-                  <span className="font-bold text-white">Publication Gate:</span>
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-bold text-white">Campaign Gate:</span>
                   <StatusPill status={details.publication_status || "ineligible"} />
                   {(details.status === "published" || details.publication_status === "published") && (
                     <span className="px-2 py-0.5 rounded-full bg-emerald-950/80 text-emerald-300 border border-emerald-800/60 font-semibold text-[10px] shadow-[0_0_6px_rgba(52,211,153,0.3)]">
@@ -328,11 +328,17 @@ export function SubmissionDetailModal({
                     </span>
                   )}
                 </div>
-                <span className="text-[11px] text-slate-400">
-                  {details.claims.length === 0
-                    ? "Ineligible: No claims extracted from content yet."
-                    : `${details.claims.filter((c) => (c as unknown as { review_status?: string }).review_status === "approved").length} of ${details.claims.length} claims approved by compliance.`}
-                </span>
+                <div className="flex items-center gap-2 text-[11px] text-slate-400">
+                  <span>
+                    {details.claims.length === 0
+                      ? "Ineligible: No claims extracted from content yet."
+                      : `${details.claims.filter((c) => (c as unknown as { review_status?: string }).review_status === "approved").length} of ${details.claims.length} claims approved by compliance reviewers.`}
+                  </span>
+                  <span className="text-slate-600">·</span>
+                  <span className="text-slate-400">
+                    AI Verified: <strong className="text-emerald-300">{details.claims.filter((c) => c.verification_status === "supported").length}</strong> supported
+                  </span>
+                </div>
               </div>
             </div>
 
@@ -355,15 +361,23 @@ export function SubmissionDetailModal({
           </div>
         )}
 
-        {/* Precise Publication Gate Blocking Reasons */}
+        {/* Requirements to Unlock Publication (Gate Checklist) */}
         {details && details.publication_status !== "eligible" && Boolean(details.publication_eligibility_details) && (
-          <div className="mx-5 mt-2.5 p-3 rounded-xl bg-amber-950/30 border border-amber-800/50 text-xs text-amber-200">
-            <div className="font-semibold text-amber-300 mb-1 flex items-center gap-1.5">
-              <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
-              <span>Publication Gate Invariants Pending ({(details.publication_eligibility_details as { blockingReasons?: string[] }).blockingReasons?.length || 0}):</span>
+          <div className="mx-5 mt-2.5 p-3.5 rounded-xl bg-amber-950/30 border border-amber-800/50 text-xs text-amber-200 shadow-md">
+            <div className="font-semibold text-amber-300 mb-1.5 flex items-center justify-between">
+              <div className="flex items-center gap-1.5">
+                <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                <span>Requirements to Unlock Publication ({(details.publication_eligibility_details as { blockingReasons?: string[] }).blockingReasons?.length || 0} remaining):</span>
+              </div>
+              <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-amber-900/60 text-amber-200 border border-amber-700/60">
+                Gate Blocked
+              </span>
             </div>
-            <ul className="list-disc list-inside space-y-0.5 text-[11px] text-amber-300/90 ml-1">
-              {((details.publication_eligibility_details as { blockingReasons?: string[] }).blockingReasons || []).slice(0, 4).map((reason: string, idx: number) => (
+            <p className="text-[11px] text-amber-200/80 mb-2 leading-relaxed">
+              Automated verification is complete. Before this marketing content can be published, every extracted claim must clear the following human compliance checkpoints:
+            </p>
+            <ul className="list-disc list-inside space-y-1 text-[11px] text-amber-300/90 ml-1">
+              {((details.publication_eligibility_details as { blockingReasons?: string[] }).blockingReasons || []).slice(0, 5).map((reason: string, idx: number) => (
                 <li key={idx} className="leading-snug">{reason}</li>
               ))}
             </ul>

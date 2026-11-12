@@ -25,13 +25,12 @@ export async function GET(
       workspace_id: string;
       title: string;
       document_type: string;
-      status: string;
       approval_status: string;
       current_version_id: string | null;
       created_at: string;
       updated_at: string;
     }>(
-      `SELECT sd.id, sd.workspace_id, sd.title, sd.document_type, sd.status, 
+      `SELECT sd.id, sd.workspace_id, sd.title, sd.document_type, 
               sd.approval_status, sd.current_version_id, sd.created_at, sd.updated_at
        FROM source_documents sd
        JOIN workspaces w ON sd.workspace_id = w.id
