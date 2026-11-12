@@ -111,6 +111,7 @@ export default function DashboardPage() {
               <Button
                 variant="primary"
                 size="lg"
+                data-tour="check-content-btn"
                 onClick={() => setIsCheckModalOpen(true)}
                 className="shadow-lg shadow-violet-950/40 text-sm font-bold flex items-center justify-center gap-2 px-6 py-3 cursor-pointer"
               >
@@ -121,6 +122,7 @@ export default function DashboardPage() {
                 <span>or</span>
                 <Link
                   href="/reviews"
+                  data-tour="review-queue-link"
                   className="text-violet-400 hover:text-violet-300 font-semibold transition-colors flex items-center gap-1"
                 >
                   <span>Review Queue ({awaitingReview})</span>
@@ -152,7 +154,7 @@ export default function DashboardPage() {
       )}
 
       {/* 3. Five Meaningful KPI Cards */}
-      <section aria-label="Five Key Compliance Metrics">
+      <section aria-label="Five Key Compliance Metrics" data-tour="kpi-cards">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
           {/* KPI 1: Claims Analyzed */}
           <div className="rounded-xl border border-slate-800/80 bg-slate-900/60 backdrop-blur-md p-4 flex flex-col justify-between hover:border-slate-700 transition-all shadow-lg group">
@@ -272,12 +274,12 @@ export default function DashboardPage() {
       </section>
 
       {/* 4. Five-Step Compliance Workflow */}
-      <section aria-label="Governance Workflow">
+      <section aria-label="Governance Workflow" data-tour="governance-workflow">
         <ComplianceWorkflow />
       </section>
 
       {/* 5. Recent Marketing Submissions Table */}
-      <section aria-label="Recent Marketing Submissions">
+      <section aria-label="Recent Marketing Submissions" data-tour="recent-submissions">
         <div className="rounded-2xl border border-slate-800/80 bg-slate-900/60 backdrop-blur-md p-5 sm:p-6 shadow-xl">
           <div className="pb-4 border-b border-slate-800/80 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
             <div>

@@ -2,9 +2,10 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { SITE_CONFIG, DEMO_WORKSPACE, CURRENT_USER } from "@/config/site";
+import { SITE_CONFIG } from "@/config/site";
 import { BrandShieldLogo } from "@/components/ui/Icons";
 import { WorkspaceSwitcher } from "@/components/workspace/WorkspaceSwitcher";
+import { HelpTourLauncher } from "@/components/tour/HelpTourLauncher";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 import {
   Menu,
@@ -33,19 +34,21 @@ interface UserSessionInfo {
   workspaceSlug: string;
 }
 
+const DEFAULT_USER_INFO: UserSessionInfo = {
+  name: "",
+  email: "",
+  role: "",
+  initials: "",
+  workspaceSlug: "",
+};
+
 export function TopNav({ onOpenMobileMenu }: TopNavProps) {
   const router = useRouter();
   const [showNotifications, setShowNotifications] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [_isSearchFocused, setIsSearchFocused] = useState(false);
-  const [userInfo, setUserInfo] = useState<UserSessionInfo>({
-    name: CURRENT_USER.name,
-    email: CURRENT_USER.email,
-    role: CURRENT_USER.role,
-    initials: CURRENT_USER.initials,
-    workspaceSlug: "dermaglow",
-  });
+  const [userInfo, setUserInfo] = useState<UserSessionInfo>(DEFAULT_USER_INFO);
 
   const userMenuRef = useRef<HTMLDivElement>(null);
   const notifRef = useRef<HTMLDivElement>(null);
@@ -53,8 +56,38 @@ export function TopNav({ onOpenMobileMenu }: TopNavProps) {
   // Fetch verified user session from server
   useEffect(() => {
     let isMounted = true;
+
+    // Immediately restore cached session profile after client mount (prevents SSR hydration mismatch)
+    if (typeof window !== "undefined") {
+      try {
+        const cached = sessionStorage.getItem("brandshield_session_profile");
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (parsed && typeof parsed.name === "string" && parsed.name) {
+            setUserInfo({
+              name: parsed.name,
+              email: parsed.email || "",
+              role: parsed.role || "",
+              initials: parsed.initials || "U",
+              workspaceSlug: parsed.workspaceSlug || "dermaglow",
+            });
+          }
+        }
+      } catch {
+        // Safe fallback
+      }
+    }
+
     fetch("/api/auth/me")
-      .then((res) => (res.ok ? res.json() : null))
+      .then((res) => {
+        if (!res.ok) {
+          if (res.status === 401 && typeof window !== "undefined") {
+            sessionStorage.removeItem("brandshield_session_profile");
+          }
+          return null;
+        }
+        return res.json();
+      })
       .then((data) => {
         if (!isMounted || !data?.user) return;
         const u = data.user;
@@ -64,16 +97,22 @@ export function TopNav({ onOpenMobileMenu }: TopNavProps) {
             ? `${names[0][0]}${names[names.length - 1][0]}`.toUpperCase()
             : (u.userName || "R").substring(0, 2).toUpperCase();
 
-        setUserInfo({
-          name: u.userName || CURRENT_USER.name,
-          email: u.userEmail || CURRENT_USER.email,
-          role: u.role ? u.role.replace(/_/g, " ") : CURRENT_USER.role,
+        const updated: UserSessionInfo = {
+          name: u.userName || "Reviewer",
+          email: u.userEmail || "",
+          role: u.role ? u.role.replace(/_/g, " ") : "Member",
           initials,
           workspaceSlug: u.workspaceSlug || "dermaglow",
-        });
+        };
+
+        if (typeof window !== "undefined") {
+          sessionStorage.setItem("brandshield_session_profile", JSON.stringify(updated));
+        }
+
+        setUserInfo(updated);
       })
       .catch(() => {
-        // Graceful fallback to default demo identity
+        // Fallback safely without exposing incorrect identity
       });
 
     return () => {
@@ -119,20 +158,24 @@ export function TopNav({ onOpenMobileMenu }: TopNavProps) {
 
   const handleSignOut = async () => {
     try {
-      // 1. Client-side Supabase signOut
-      try {
-        const supabase = getSupabaseBrowserClient();
-        await supabase.auth.signOut();
-      } catch {
-        // Safe to ignore if browser client is not initialized
-      }
+      // 1. Client-side Supabase signOut and server-side logout in parallel
+      const clientSignOut = (async () => {
+        try {
+          const supabase = getSupabaseBrowserClient();
+          await supabase.auth.signOut();
+        } catch {
+          // Safe to ignore if browser client is not initialized
+        }
+      })();
 
-      // 2. Server-side session & cookie termination
-      await fetch("/api/auth/logout", { method: "POST" });
+      const serverLogout = fetch("/api/auth/logout", { method: "POST" });
+
+      await Promise.allSettled([clientSignOut, serverLogout]);
     } catch {
       // Proceed with redirection even if network fails
     } finally {
       if (typeof window !== "undefined") {
+        sessionStorage.removeItem("brandshield_session_profile");
         localStorage.removeItem("active_workspace_id");
         localStorage.removeItem("active_workspace_slug");
       }
@@ -174,7 +217,7 @@ export function TopNav({ onOpenMobileMenu }: TopNavProps) {
         </div>
 
         {/* Desktop Breadcrumb / Workspace Switcher */}
-        <div className="hidden lg:flex items-center gap-2.5 text-xs">
+        <div className="hidden lg:flex items-center gap-2.5 text-xs" data-tour="workspace-indicator">
           <WorkspaceSwitcher
             currentSlug={userInfo.workspaceSlug}
             onWorkspaceChange={(ws) => {
@@ -216,10 +259,13 @@ export function TopNav({ onOpenMobileMenu }: TopNavProps) {
         </form>
       </div>
 
-      {/* Right side: Notifications & User Profile */}
+      {/* Right side: Guided Tour Help, Notifications & User Profile */}
       <div className="flex items-center gap-2.5 sm:gap-3.5">
+        {/* Interactive Guided Tour & Walkthroughs Entry */}
+        <HelpTourLauncher />
+
         {/* Notification Bell */}
-        <div className="relative" ref={notifRef}>
+        <div className="relative" ref={notifRef} data-tour="notifications-bell">
           <button
             type="button"
             onClick={() => setShowNotifications(!showNotifications)}
@@ -290,17 +336,29 @@ export function TopNav({ onOpenMobileMenu }: TopNavProps) {
             className="flex items-center gap-2.5 pl-2 sm:pl-3 border-l border-slate-800 hover:opacity-90 transition-opacity focus:outline-none cursor-pointer"
             aria-label="User profile menu"
           >
-            <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-violet-600 to-indigo-600 text-white flex items-center justify-center text-xs font-bold tracking-wider shadow-[0_0_10px_rgba(139,92,246,0.3)] border border-violet-400/30">
-              {userInfo.initials}
-            </div>
-            <div className="hidden md:flex flex-col text-left">
-              <span className="text-xs font-semibold text-white leading-tight">
-                {userInfo.name}
-              </span>
-              <span className="text-[10px] text-slate-400 truncate max-w-[130px] capitalize">
-                {userInfo.role}
-              </span>
-            </div>
+            {userInfo.name ? (
+              <>
+                <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-violet-600 to-indigo-600 text-white flex items-center justify-center text-xs font-bold tracking-wider shadow-[0_0_10px_rgba(139,92,246,0.3)] border border-violet-400/30">
+                  {userInfo.initials || "U"}
+                </div>
+                <div className="hidden md:flex flex-col text-left">
+                  <span className="text-xs font-semibold text-white leading-tight">
+                    {userInfo.name}
+                  </span>
+                  <span className="text-[10px] text-slate-400 truncate max-w-[130px] capitalize">
+                    {userInfo.role}
+                  </span>
+                </div>
+              </>
+            ) : (
+              <div className="flex items-center gap-2 py-0.5">
+                <div className="w-8 h-8 rounded-full bg-slate-800/80 animate-pulse border border-slate-700/50" />
+                <div className="hidden md:flex flex-col gap-1 text-left">
+                  <div className="w-20 h-2.5 bg-slate-800/80 animate-pulse rounded" />
+                  <div className="w-14 h-2 bg-slate-800/60 animate-pulse rounded" />
+                </div>
+              </div>
+            )}
             <ChevronDown className="w-3.5 h-3.5 text-slate-400 hidden sm:block" />
           </button>
 

@@ -119,6 +119,7 @@ export default function SubmissionsPage() {
           <Button
             variant="primary"
             size="sm"
+            data-tour="create-submission-btn"
             onClick={() => setCreateModalOpen(true)}
             className="flex items-center gap-1.5"
           >
@@ -206,7 +207,7 @@ export default function SubmissionsPage() {
         </div>
 
         {/* Search Input */}
-        <div className="w-full sm:w-72 relative">
+        <div className="w-full sm:w-72 relative" data-tour="submissions-search">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
           <input
             type="text"
@@ -219,7 +220,7 @@ export default function SubmissionsPage() {
       </div>
 
       {/* Submissions List */}
-      <div className="space-y-3">
+      <div className="space-y-3" data-tour="submissions-table">
         {isLoading ? (
           <div className="p-12 text-center text-slate-400 text-sm">
             Loading submissions...

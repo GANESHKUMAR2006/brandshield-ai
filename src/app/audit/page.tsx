@@ -17,6 +17,7 @@ import {
   FileCheck2,
   Lock,
   ArrowRight,
+  Download,
 } from "lucide-react";
 
 export default function AuditPage() {
@@ -120,6 +121,22 @@ export default function AuditPage() {
             Immutable log of all claim verifications, reviewer sign-offs, policy overrides, and publication transitions.
           </p>
         </div>
+        <button
+          data-tour="audit-export-btn"
+          onClick={() => {
+            const blob = new Blob([JSON.stringify(events, null, 2)], { type: "application/json" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `brandshield-audit-export-${new Date().toISOString().split("T")[0]}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+          }}
+          className="flex items-center gap-2 px-3.5 py-2 text-xs font-semibold rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-200 hover:text-white transition-all shadow-md cursor-pointer self-start sm:self-auto"
+        >
+          <Download className="w-3.5 h-3.5 text-cyan-400" />
+          <span>Export Audit Ledger</span>
+        </button>
       </div>
 
       {/* Metrics Row */}
@@ -156,7 +173,7 @@ export default function AuditPage() {
       </div>
 
       {/* Search & Comprehensive Filters Bar */}
-      <div className="p-4 bg-slate-900/60 backdrop-blur-md rounded-xl border border-slate-800/80 shadow-lg space-y-3">
+      <div data-tour="audit-filters" className="p-4 bg-slate-900/60 backdrop-blur-md rounded-xl border border-slate-800/80 shadow-lg space-y-3">
         {/* Search input */}
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1">
@@ -254,7 +271,7 @@ export default function AuditPage() {
       </div>
 
       {/* Event Stream Card */}
-      <div className="rounded-xl border border-slate-800/80 bg-slate-900/60 backdrop-blur-md shadow-xl overflow-hidden">
+      <div data-tour="audit-events-table" className="rounded-xl border border-slate-800/80 bg-slate-900/60 backdrop-blur-md shadow-xl overflow-hidden">
         <div className="p-5 border-b border-slate-800/80 flex items-center justify-between">
           <div>
             <h2 className="text-base font-bold text-white tracking-tight">Detailed Audit Event Stream</h2>

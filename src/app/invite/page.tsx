@@ -106,15 +106,25 @@ function InviteContent() {
     setSwitching(true);
     setError(null);
     try {
-      try {
-        const supabase = getSupabaseBrowserClient();
-        await supabase.auth.signOut();
-      } catch {
-        // Safe to ignore if browser client is not initialized
-      }
+      const clientSignOut = (async () => {
+        try {
+          const supabase = getSupabaseBrowserClient();
+          await supabase.auth.signOut();
+        } catch {
+          // Safe to ignore if browser client is not initialized
+        }
+      })();
 
-      await fetch("/api/auth/logout", { method: "POST" });
+      const serverLogout = fetch("/api/auth/logout", { method: "POST" });
+
+      await Promise.allSettled([clientSignOut, serverLogout]);
       setCurrentUser(null);
+
+      if (typeof window !== "undefined") {
+        sessionStorage.removeItem("brandshield_session_profile");
+        localStorage.removeItem("active_workspace_id");
+        localStorage.removeItem("active_workspace_slug");
+      }
 
       const targetEmail = invitation?.email || "";
       if (targetAction === "register") {

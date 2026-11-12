@@ -556,6 +556,7 @@ export default function PoliciesPage() {
 
             <button
               onClick={() => setActiveTab("simulate")}
+              data-tour="policy-studio-link"
               className={`px-3.5 py-2 text-xs font-semibold rounded-xl border transition-all flex items-center gap-1.5 cursor-pointer ${
                 activeTab === "simulate"
                   ? "bg-violet-950/80 text-violet-300 border-violet-800/60 shadow-lg shadow-violet-950/40"
@@ -569,6 +570,7 @@ export default function PoliciesPage() {
             {isAdmin ? (
               <button
                 onClick={handleOpenCreateBuilder}
+                data-tour="create-policy-btn"
                 className="px-4 py-2 text-xs font-semibold text-white bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 rounded-xl shadow-md shadow-violet-950/40 border border-violet-500/30 transition-all cursor-pointer flex items-center gap-1.5"
               >
                 <Plus className="w-3.5 h-3.5" />
@@ -680,13 +682,13 @@ export default function PoliciesPage() {
                 Loading workspace compliance policies...
               </div>
             ) : policies.length === 0 ? (
-              <div className="text-center py-16 rounded-xl border border-slate-800 bg-slate-900/60">
+              <div data-tour="policies-list" className="text-center py-16 rounded-xl border border-slate-800 bg-slate-900/60">
                 <ShieldAlert className="w-10 h-10 text-slate-500 mx-auto mb-2" />
                 <div className="text-sm font-semibold text-white">No policies found matching filters</div>
                 <div className="text-xs text-slate-400 mt-1">Try resetting filters or launch the Visual Policy Builder.</div>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div data-tour="policies-list" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {policies.map((policy) => (
                   <div
                     key={policy.id}

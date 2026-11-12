@@ -4,12 +4,14 @@ import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Button } from "@/components/ui/Button";
-import { DEMO_WORKSPACE, CURRENT_USER, SITE_CONFIG } from "@/config/site";
+import { DEMO_WORKSPACE, SITE_CONFIG } from "@/config/site";
 import { SystemHealthModal } from "@/components/system/SystemHealthModal";
 import { PresenterViewModal } from "@/components/demo/PresenterViewModal";
 import { GuidedDemoModal } from "@/components/demo/GuidedDemoModal";
 import { InviteMemberModal } from "@/components/workspace/InviteMemberModal";
 import { ArchiveOrganizationModal } from "@/components/workspace/ArchiveOrganizationModal";
+import { RolesManagementSection } from "@/components/workspace/RolesManagementSection";
+import { useTour } from "@/components/tour/TourContext";
 import {
   fetchWorkspaceMembers,
   fetchWorkspaceInvitations,
@@ -18,8 +20,10 @@ import {
   revokeWorkspaceInvitation,
   fetchWorkspaceDetails,
   fetchWorkspaces,
+  fetchWorkspaceRoles,
   WorkspaceMemberItem,
   WorkspaceInvitationItem,
+  RoleItem,
 } from "@/lib/api-client";
 import { ReviewerRole } from "@/types";
 import {
@@ -124,7 +128,8 @@ const DEFAULT_INVITATIONS: WorkspaceInvitationItem[] = [
 ];
 
 export default function SettingsPage() {
-  const [activeTab, setActiveTab] = useState<"general" | "team" | "diagnostics">("general");
+  const { openWelcome } = useTour();
+  const [activeTab, setActiveTab] = useState<"general" | "team" | "roles" | "diagnostics">("general");
 
   // Modals
   const [healthModalOpen, setHealthModalOpen] = useState(false);
@@ -137,11 +142,14 @@ export default function SettingsPage() {
   const [workspaceName, setWorkspaceName] = useState<string>("Workspace");
   const [workspaceSlug, setWorkspaceSlug] = useState<string>("");
   const [userRole, setUserRole] = useState<ReviewerRole>("viewer");
+  const [userName, setUserName] = useState<string>("");
+  const [userEmail, setUserEmail] = useState<string>("");
   const [isArchiveModalOpen, setIsArchiveModalOpen] = useState(false);
 
-  // Team management state
+  // Team & Role management state
   const [members, setMembers] = useState<WorkspaceMemberItem[]>(DEFAULT_MEMBERS);
   const [invitations, setInvitations] = useState<WorkspaceInvitationItem[]>(DEFAULT_INVITATIONS);
+  const [customRoles, setCustomRoles] = useState<RoleItem[]>([]);
   const [isLoadingTeam, setIsLoadingTeam] = useState(false);
   const [teamNotification, setTeamNotification] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
@@ -197,10 +205,23 @@ export default function SettingsPage() {
 
   // Sync workspace and role from server session / localStorage
   useEffect(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const cached = sessionStorage.getItem("brandshield_session_profile");
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (parsed?.name) setUserName(parsed.name);
+          if (parsed?.email) setUserEmail(parsed.email);
+        }
+      } catch {}
+    }
+
     fetch("/api/auth/me")
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (data?.user) {
+          if (data.user.userName) setUserName(data.user.userName);
+          if (data.user.userEmail) setUserEmail(data.user.userEmail);
           if (data.user.workspaceId) setWorkspaceId(data.user.workspaceId);
           if (data.user.workspaceSlug) {
             setWorkspaceSlug(data.user.workspaceSlug);
@@ -285,12 +306,16 @@ export default function SettingsPage() {
     if (!workspaceId) return;
     setIsLoadingTeam(true);
     try {
-      const [membersData, invitesData] = await Promise.all([
+      const [membersData, invitesData, rolesData] = await Promise.all([
         fetchWorkspaceMembers(workspaceId).catch(() => DEFAULT_MEMBERS),
         fetchWorkspaceInvitations(workspaceId).catch(() => DEFAULT_INVITATIONS),
+        fetchWorkspaceRoles(workspaceId).catch(() => null),
       ]);
       setMembers(membersData && membersData.length > 0 ? membersData : DEFAULT_MEMBERS);
       setInvitations(invitesData || []);
+      if (rolesData && rolesData.customRoles) {
+        setCustomRoles(rolesData.customRoles);
+      }
       await Promise.all([loadJoinCodeStatus(), loadJoinRequests()]);
     } catch {
       // Use fallback
@@ -461,21 +486,55 @@ export default function SettingsPage() {
   };
 
   useEffect(() => {
-    if (activeTab === "team") {
+    if (activeTab === "team" || activeTab === "roles") {
       loadTeamData();
     }
   }, [activeTab, loadTeamData]);
 
-  const handleRoleChange = async (memberId: string, newRole: ReviewerRole) => {
+  const handleRoleChange = async (memberId: string, roleValue: string) => {
     try {
-      await updateMemberRole(workspaceId, memberId, newRole);
-      setMembers((prev) =>
-        prev.map((m) => (m.id === memberId ? { ...m, role: newRole } : m))
-      );
-      setTeamNotification({
-        type: "success",
-        message: `Member role successfully updated to ${ROLE_LABELS[newRole]?.label || newRole}.`,
-      });
+      if (roleValue.startsWith("custom:")) {
+        const customRoleId = roleValue.replace("custom:", "");
+        const cr = customRoles.find((c) => c.id === customRoleId);
+        await updateMemberRole(workspaceId, memberId, "custom", customRoleId);
+        setMembers((prev) =>
+          prev.map((m) =>
+            m.id === memberId
+              ? {
+                  ...m,
+                  role: "custom",
+                  customRoleId,
+                  customRoleName: cr?.name || "Custom Role",
+                  displayRole: cr?.name || "Custom Role",
+                }
+              : m
+          )
+        );
+        setTeamNotification({
+          type: "success",
+          message: `Member role successfully updated to custom role "${cr?.name || "Custom Role"}".`,
+        });
+      } else {
+        const newRole = roleValue as ReviewerRole;
+        await updateMemberRole(workspaceId, memberId, newRole);
+        setMembers((prev) =>
+          prev.map((m) =>
+            m.id === memberId
+              ? {
+                  ...m,
+                  role: newRole,
+                  customRoleId: null,
+                  customRoleName: null,
+                  displayRole: ROLE_LABELS[newRole]?.label || newRole,
+                }
+              : m
+          )
+        );
+        setTeamNotification({
+          type: "success",
+          message: `Member role successfully updated to ${ROLE_LABELS[newRole]?.label || newRole}.`,
+        });
+      }
       setTimeout(() => setTeamNotification(null), 4000);
     } catch (err) {
       setTeamNotification({
@@ -603,7 +662,7 @@ export default function SettingsPage() {
       </div>
 
       {/* Navigation Tabs */}
-      <div className="flex items-center gap-2 border-b border-slate-800">
+      <div data-tour="settings-tabs" className="flex items-center gap-2 border-b border-slate-800">
         <button
           type="button"
           onClick={() => setActiveTab("general")}
@@ -631,6 +690,25 @@ export default function SettingsPage() {
           <span className="ml-1 text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-full bg-slate-800 text-slate-300">
             {members.length}
           </span>
+        </button>
+
+        <button
+          type="button"
+          data-tour="roles-permissions-tab"
+          onClick={() => setActiveTab("roles")}
+          className={`flex items-center gap-2 px-4 py-2.5 text-xs font-semibold border-b-2 transition-all cursor-pointer ${
+            activeTab === "roles"
+              ? "border-violet-500 text-white bg-violet-950/20"
+              : "border-transparent text-slate-400 hover:text-slate-200 hover:border-slate-700"
+          }`}
+        >
+          <ShieldCheck className="w-4 h-4 text-violet-400" />
+          <span>Roles & Permissions</span>
+          {customRoles.length > 0 && (
+            <span className="ml-1 text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-full bg-violet-950/90 text-violet-300 border border-violet-800/60">
+              {customRoles.length}
+            </span>
+          )}
         </button>
 
         <button
@@ -770,7 +848,7 @@ export default function SettingsPage() {
                 <div>
                   <div className="font-semibold text-white">Active Reviewer Account</div>
                   <div className="text-[11px] text-slate-400 mt-0.5">
-                    {CURRENT_USER.name} ({CURRENT_USER.email}) — {CURRENT_USER.role}
+                    {userName || "Active Reviewer"} ({userEmail || "user"}) — {ROLE_LABELS[userRole]?.label || userRole}
                   </div>
                 </div>
                 <div className="font-bold text-violet-300 text-xs bg-violet-950/80 px-3 py-1 rounded-lg border border-violet-800/60">
@@ -912,6 +990,7 @@ export default function SettingsPage() {
               <Button
                 variant="primary"
                 size="sm"
+                data-tour="invite-member-btn"
                 onClick={() => setInviteModalOpen(true)}
                 className="flex items-center gap-2 self-start sm:self-auto"
               >
@@ -988,18 +1067,36 @@ export default function SettingsPage() {
                         </td>
 
                         <td className="py-3.5 px-6">
-                          <select
-                            value={member.role}
-                            onChange={(e) => handleRoleChange(member.id, e.target.value as ReviewerRole)}
-                            className="bg-slate-950 border border-slate-700 hover:border-slate-600 rounded-lg px-2.5 py-1 text-xs text-white font-medium cursor-pointer focus:outline-none focus:border-cyan-500"
-                            aria-label={`Change role for ${member.name || member.email}`}
-                          >
-                            <option value="admin">Administrator</option>
-                            <option value="compliance_reviewer">Compliance Reviewer</option>
-                            <option value="legal_reviewer">Legal Reviewer</option>
-                            <option value="creator">Creator</option>
-                            <option value="viewer">Viewer</option>
-                          </select>
+                          <div className="flex items-center gap-2">
+                            <select
+                              value={member.customRoleId ? `custom:${member.customRoleId}` : member.role}
+                              onChange={(e) => handleRoleChange(member.id, e.target.value)}
+                              className="bg-slate-950 border border-slate-700 hover:border-slate-600 rounded-lg px-2.5 py-1 text-xs text-white font-medium cursor-pointer focus:outline-none focus:border-cyan-500"
+                              aria-label={`Change role for ${member.name || member.email}`}
+                            >
+                              <optgroup label="Built-in Roles">
+                                <option value="admin">Administrator</option>
+                                <option value="compliance_reviewer">Compliance Reviewer</option>
+                                <option value="legal_reviewer">Legal Reviewer</option>
+                                <option value="creator">Creator</option>
+                                <option value="viewer">Viewer</option>
+                              </optgroup>
+                              {customRoles.length > 0 && (
+                                <optgroup label="Custom Roles">
+                                  {customRoles.map((cr) => (
+                                    <option key={cr.id} value={`custom:${cr.id}`}>
+                                      {cr.name} (Custom)
+                                    </option>
+                                  ))}
+                                </optgroup>
+                              )}
+                            </select>
+                            {member.customRoleName && (
+                              <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold bg-cyan-950/80 text-cyan-300 border border-cyan-800/60 shrink-0">
+                                Custom
+                              </span>
+                            )}
+                          </div>
                         </td>
 
                         <td className="py-3.5 px-6">
@@ -1428,7 +1525,17 @@ export default function SettingsPage() {
         </div>
       )}
 
-      {/* TAB 3: DIAGNOSTICS & TOOLS */}
+      {/* TAB: ROLES & PERMISSIONS */}
+      {activeTab === "roles" && (
+        <RolesManagementSection
+          workspaceId={workspaceId}
+          workspaceName={workspaceName}
+          userRole={userRole}
+          onRolesUpdated={loadTeamData}
+        />
+      )}
+
+      {/* TAB 4: DIAGNOSTICS & TOOLS */}
       {activeTab === "diagnostics" && (
         <div className="space-y-6">
           <div className="rounded-xl border border-slate-800/80 bg-slate-900/60 backdrop-blur-md p-6 shadow-xl space-y-4">
@@ -1476,7 +1583,7 @@ export default function SettingsPage() {
 
               <button
                 type="button"
-                onClick={() => setGuideModalOpen(true)}
+                onClick={() => openWelcome()}
                 className="p-3.5 rounded-xl border border-slate-800 bg-slate-950/60 hover:border-cyan-700/60 hover:bg-slate-900/60 transition-all text-left group cursor-pointer"
               >
                 <div className="flex items-center justify-between mb-2">

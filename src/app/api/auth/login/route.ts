@@ -69,11 +69,20 @@ export async function POST(request: NextRequest) {
 
     const user = data.user;
 
-    // 3. Resolve workspaces strictly from active database memberships for this specific user UUID
+    // 3. Resolve workspaces and authoritative database role from active memberships for this specific user UUID
     let userWorkspaces: string[] = [];
+    let primaryRole = "compliance_reviewer";
+    let primaryWorkspaceId = "";
+    let primaryWorkspaceSlug = "";
+
     try {
-      const membershipsRes = await query<{ slug: string }>(
-        `SELECT w.slug
+      const membershipsRes = await query<{
+        slug: string;
+        role: string;
+        workspace_id: string;
+        workspace_name: string;
+      }>(
+        `SELECT w.slug, wm.role, w.id as workspace_id, w.name as workspace_name
          FROM workspace_memberships wm
          JOIN workspaces w ON wm.workspace_id = w.id
          WHERE wm.user_id = $1 AND wm.status = 'active'
@@ -82,6 +91,11 @@ export async function POST(request: NextRequest) {
         [user.id]
       );
       userWorkspaces = membershipsRes.rows.map((r) => r.slug);
+      if (membershipsRes.rows.length > 0) {
+        primaryRole = membershipsRes.rows[0].role;
+        primaryWorkspaceId = membershipsRes.rows[0].workspace_id;
+        primaryWorkspaceSlug = membershipsRes.rows[0].slug;
+      }
     } catch {
       // Continue to app_metadata check
     }
@@ -91,6 +105,9 @@ export async function POST(request: NextRequest) {
         ? user.app_metadata.workspaces
         : [user.app_metadata.workspaces];
     }
+    if (primaryRole === "compliance_reviewer" && user.app_metadata?.role) {
+      primaryRole = user.app_metadata.role;
+    }
 
     const response = NextResponse.json({
       success: true,
@@ -98,8 +115,10 @@ export async function POST(request: NextRequest) {
       user: {
         id: user.id,
         email: user.email,
-        name: user.user_metadata?.name || user.email || "Verified Reviewer",
-        role: user.app_metadata?.role || "compliance_reviewer",
+        name: user.user_metadata?.name || user.email?.split("@")[0] || "Verified Reviewer",
+        role: primaryRole,
+        workspaceId: primaryWorkspaceId,
+        workspaceSlug: primaryWorkspaceSlug || userWorkspaces[0] || "dermaglow",
         workspaces: userWorkspaces,
       },
     });

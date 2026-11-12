@@ -247,7 +247,7 @@ export default function ReviewsPage() {
 
       {/* Filters Bar */}
       <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-slate-900/60 backdrop-blur-md rounded-xl border border-slate-800/80 shadow-lg">
-        <div className="flex flex-wrap items-center gap-2 text-xs">
+        <div data-tour="reviews-risk-filter" className="flex flex-wrap items-center gap-2 text-xs">
           <span className="text-slate-400 font-semibold uppercase text-[10px]">Risk:</span>
           {["all", "critical", "high", "medium", "low"].map((r) => (
             <button
@@ -300,7 +300,7 @@ export default function ReviewsPage() {
           Loading prioritized compliance review queue...
         </div>
       ) : queue.length === 0 ? (
-        <div className="rounded-xl border border-slate-800/80 bg-slate-900/60 backdrop-blur-md p-12 text-center shadow-xl">
+        <div data-tour="reviews-queue-table" className="rounded-xl border border-slate-800/80 bg-slate-900/60 backdrop-blur-md p-12 text-center shadow-xl">
           <div className="w-12 h-12 rounded-full bg-emerald-950/60 text-emerald-400 border border-emerald-800/60 flex items-center justify-center mx-auto mb-3 shadow-[0_0_12px_rgba(52,211,153,0.3)]">
             <CheckCircle2 className="w-6 h-6" />
           </div>
@@ -310,7 +310,7 @@ export default function ReviewsPage() {
           </p>
         </div>
       ) : (
-        <div className="space-y-4">
+        <div data-tour="reviews-queue-table" className="space-y-4">
           {queue.map((claim) => {
             const isContradicted = claim.verification_status === "contradicted";
             const isHighRisk = claim.risk_level === "critical" || claim.risk_level === "high";
@@ -441,7 +441,7 @@ export default function ReviewsPage() {
                       Product: <strong className="text-white">{claim.product_name || "DermaGlow"}</strong>
                     </div>
 
-                    <div className="flex items-center gap-2 flex-wrap">
+                    <div data-tour="reviews-decision-actions" className="flex items-center gap-2 flex-wrap">
                       <Button
                         variant="danger"
                         size="sm"

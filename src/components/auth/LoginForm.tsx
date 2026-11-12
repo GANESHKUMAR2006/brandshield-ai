@@ -144,6 +144,7 @@ export function LoginForm() {
     if (typeof window !== "undefined") {
       localStorage.removeItem("active_workspace_id");
       localStorage.removeItem("active_workspace_slug");
+      sessionStorage.removeItem("brandshield_session_profile");
     }
 
     setExistingUser(null);
@@ -199,13 +200,29 @@ export function LoginForm() {
         return;
       }
 
-      // Success state: show confirmation message before redirection
-      setSuccessMessage("Authentication successful. Redirecting to your workspace...");
+      // Cache authoritative user profile in sessionStorage for seamless, zero-flash transition
+      if (typeof window !== "undefined" && data.user) {
+        sessionStorage.setItem(
+          "brandshield_session_profile",
+          JSON.stringify({
+            name: data.user.name,
+            email: data.user.email,
+            role: data.user.role,
+            workspaceId: data.user.workspaceId,
+            workspaceSlug: data.user.workspaceSlug,
+          })
+        );
+        if (data.user.workspaceId) {
+          localStorage.setItem("active_workspace_id", data.user.workspaceId);
+        }
+        if (data.user.workspaceSlug) {
+          localStorage.setItem("active_workspace_slug", data.user.workspaceSlug);
+        }
+      }
 
-      setTimeout(() => {
-        router.push(redirectTo);
-        router.refresh();
-      }, 400);
+      // Success state: show confirmation message and redirect immediately
+      setSuccessMessage("Authentication successful. Redirecting to your workspace...");
+      router.replace(redirectTo);
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Network error during authentication."

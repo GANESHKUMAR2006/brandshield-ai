@@ -893,10 +893,39 @@ export interface WorkspaceMemberItem {
   id: string;
   userId: string;
   role: string;
+  customRoleId?: string | null;
+  customRoleName?: string | null;
+  displayRole?: string;
   status: string;
   email: string;
   name: string;
   joinedAt: string;
+}
+
+export interface RoleItem {
+  id: string;
+  name: string;
+  description: string;
+  permissions: string[];
+  memberCount: number;
+  isBuiltIn: boolean;
+  key?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface PermissionItem {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  isDangerous?: boolean;
+}
+
+export interface WorkspaceRolesResponse {
+  builtInRoles: RoleItem[];
+  customRoles: RoleItem[];
+  allPermissions: PermissionItem[];
 }
 
 export interface WorkspaceInvitationItem {
@@ -978,16 +1007,89 @@ export async function fetchWorkspaceMembers(id: string): Promise<WorkspaceMember
   return data.members;
 }
 
-export async function updateMemberRole(workspaceId: string, memberId: string, role: string): Promise<void> {
+export async function updateMemberRole(
+  workspaceId: string,
+  memberId: string,
+  role: string,
+  customRoleId?: string
+): Promise<void> {
   const res = await workspaceFetch(`/api/workspaces/${workspaceId}/members/${memberId}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ role }),
+    body: JSON.stringify({ role, customRoleId }),
   });
   const data = await res.json();
   if (!res.ok || !data.success) {
     throw new Error(data.error || "Failed to update member role");
   }
+}
+
+export async function fetchWorkspaceRoles(workspaceId: string): Promise<WorkspaceRolesResponse> {
+  const res = await workspaceFetch(`/api/workspaces/${workspaceId}/roles`, { cache: "no-store" });
+  const data = await res.json();
+  if (!res.ok || !data.success) {
+    throw new Error(data.error || "Failed to load workspace roles");
+  }
+  return data;
+}
+
+export async function createCustomRole(
+  workspaceId: string,
+  payload: { name: string; description?: string; permissions: string[] }
+): Promise<RoleItem> {
+  const res = await workspaceFetch(`/api/workspaces/${workspaceId}/roles`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json();
+  if (!res.ok || !data.success) {
+    throw new Error(data.error || "Failed to create custom role");
+  }
+  return data.role;
+}
+
+export async function updateCustomRole(
+  workspaceId: string,
+  roleId: string,
+  payload: { name?: string; description?: string; permissions?: string[] }
+): Promise<void> {
+  const res = await workspaceFetch(`/api/workspaces/${workspaceId}/roles/${roleId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json();
+  if (!res.ok || !data.success) {
+    throw new Error(data.error || "Failed to update custom role");
+  }
+}
+
+export async function deleteCustomRole(workspaceId: string, roleId: string): Promise<void> {
+  const res = await workspaceFetch(`/api/workspaces/${workspaceId}/roles/${roleId}`, {
+    method: "DELETE",
+  });
+  const data = await res.json();
+  if (!res.ok || !data.success) {
+    throw new Error(data.error || "Failed to delete custom role");
+  }
+}
+
+export async function duplicateRole(
+  workspaceId: string,
+  roleId: string,
+  payload?: { name?: string }
+): Promise<RoleItem> {
+  const res = await workspaceFetch(`/api/workspaces/${workspaceId}/roles/${roleId}/duplicate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload || {}),
+  });
+  const data = await res.json();
+  if (!res.ok || !data.success) {
+    throw new Error(data.error || "Failed to duplicate role");
+  }
+  return data.role;
 }
 
 export async function removeWorkspaceMember(workspaceId: string, memberId: string): Promise<void> {

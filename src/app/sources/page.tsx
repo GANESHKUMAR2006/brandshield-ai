@@ -150,6 +150,7 @@ export default function SourcesPage() {
           <Button
             variant="primary"
             size="sm"
+            data-tour="upload-evidence-btn"
             onClick={() => setIsUploadModalOpen(true)}
             className="cursor-pointer"
           >
@@ -210,7 +211,7 @@ export default function SourcesPage() {
       {/* Interactive Tabs & Search Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-1">
         {/* Navigation Tabs */}
-        <div className="flex items-center gap-1 p-1 bg-slate-900/80 rounded-xl border border-slate-800 text-xs font-medium overflow-x-auto shadow-inner">
+        <div className="flex items-center gap-1 p-1 bg-slate-900/80 rounded-xl border border-slate-800 text-xs font-medium overflow-x-auto shadow-inner" data-tour="evidence-tabs">
           <button
             onClick={() => setActiveTab("documents")}
             className={`px-3 py-1.5 rounded-lg transition-all whitespace-nowrap cursor-pointer text-xs ${
@@ -276,7 +277,7 @@ export default function SourcesPage() {
 
       {/* TAB 1: SOURCE DOCUMENTS */}
       {!isLoading && activeTab === "documents" && (
-        <div className="rounded-xl border border-slate-800/80 bg-slate-900/60 backdrop-blur-md shadow-xl overflow-hidden">
+        <div className="rounded-xl border border-slate-800/80 bg-slate-900/60 backdrop-blur-md shadow-xl overflow-hidden" data-tour="evidence-list">
           <div className="p-5 border-b border-slate-800/80 flex flex-row items-center justify-between">
             <div>
               <h2 className="text-base font-bold text-white tracking-tight">Verified Source Documents</h2>

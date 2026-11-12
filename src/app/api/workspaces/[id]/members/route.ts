@@ -41,6 +41,9 @@ export async function GET(
       id: string;
       userId: string;
       role: string;
+      customRoleId?: string | null;
+      customRoleName?: string | null;
+      displayRole?: string;
       status: string;
       email: string;
       name: string;
@@ -52,6 +55,8 @@ export async function GET(
         id: string;
         user_id: string;
         role: string;
+        custom_role_id: string | null;
+        custom_role_name: string | null;
         status: string;
         created_at: string;
         email: string | null;
@@ -61,12 +66,15 @@ export async function GET(
            wm.id,
            wm.user_id,
            wm.role,
+           wm.custom_role_id,
+           wr.name as custom_role_name,
            wm.status,
            wm.created_at,
            u.email,
            COALESCE(u.raw_user_meta_data->>'name', split_part(u.email, '@', 1)) as name
          FROM workspace_memberships wm
          LEFT JOIN auth.users u ON wm.user_id = u.id
+         LEFT JOIN workspace_roles wr ON wm.custom_role_id = wr.id
          WHERE wm.workspace_id = $1
          ORDER BY wm.created_at ASC`,
         [id]
@@ -76,6 +84,9 @@ export async function GET(
         id: r.id,
         userId: r.user_id,
         role: r.role,
+        customRoleId: r.custom_role_id || null,
+        customRoleName: r.custom_role_name || null,
+        displayRole: r.custom_role_name || r.role,
         status: r.status,
         email: r.email || "member@organization.internal",
         name: r.name || "Workspace Member",
@@ -87,13 +98,16 @@ export async function GET(
         id: string;
         user_id: string;
         role: string;
+        custom_role_id: string | null;
+        custom_role_name: string | null;
         status: string;
         created_at: string;
       }>(
-        `SELECT id, user_id, role, status, created_at
-         FROM workspace_memberships
-         WHERE workspace_id = $1
-         ORDER BY created_at ASC`,
+        `SELECT wm.id, wm.user_id, wm.role, wm.custom_role_id, wr.name as custom_role_name, wm.status, wm.created_at
+         FROM workspace_memberships wm
+         LEFT JOIN workspace_roles wr ON wm.custom_role_id = wr.id
+         WHERE wm.workspace_id = $1
+         ORDER BY wm.created_at ASC`,
         [id]
       );
 
@@ -101,6 +115,9 @@ export async function GET(
         id: r.id,
         userId: r.user_id,
         role: r.role,
+        customRoleId: r.custom_role_id || null,
+        customRoleName: r.custom_role_name || null,
+        displayRole: r.custom_role_name || r.role,
         status: r.status,
         email: r.user_id === session.userId ? session.userEmail : "member@organization.internal",
         name: r.user_id === session.userId ? session.userName : "Workspace Member",

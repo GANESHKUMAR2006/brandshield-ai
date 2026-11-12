@@ -26,6 +26,7 @@ export interface AuthenticatedUser {
 
 export interface ResolveSessionOptions {
   allowNoWorkspace?: boolean;
+  authenticatedUser?: AuthenticatedUser | null;
 }
 
 export type WorkspacePermission = "read" | "write" | "admin" | "review" | "publish";
@@ -247,7 +248,8 @@ export async function resolveTargetWorkspaceIdentifier(
 export async function requireWorkspaceAccess(
   targetWorkspaceIdOrSlug?: string,
   requiredPermission?: WorkspacePermission,
-  request?: NextRequest | Request
+  request?: NextRequest | Request,
+  authenticatedUser?: AuthenticatedUser | null
 ): Promise<VerifiedWorkspaceContext> {
   const isProduction =
     process.env.NODE_ENV === "production" ||
@@ -361,8 +363,10 @@ export async function requireWorkspaceAccess(
     };
   }
 
-  // 1. Resolve real authenticated user
-  const user = await resolveAuthenticatedUser(request);
+  // 1. Resolve real authenticated user (reusing pre-resolved identity if supplied)
+  const user = authenticatedUser !== undefined
+    ? authenticatedUser
+    : await resolveAuthenticatedUser(request);
 
   if (user) {
     let memberRes;
@@ -605,7 +609,12 @@ export async function resolveServerSession(
     const user = await resolveAuthenticatedUser(request);
     if (user) {
       try {
-        const ctx = await requireWorkspaceAccess(targetWorkspaceSlug, undefined, request);
+        const ctx = await requireWorkspaceAccess(
+    targetWorkspaceSlug,
+    undefined,
+    request,
+    options?.authenticatedUser
+  );
         return {
           userId: ctx.userId,
           userName: ctx.userName,
@@ -636,7 +645,12 @@ export async function resolveServerSession(
     }
   }
 
-  const ctx = await requireWorkspaceAccess(targetWorkspaceSlug, undefined, request);
+  const ctx = await requireWorkspaceAccess(
+    targetWorkspaceSlug,
+    undefined,
+    request,
+    options?.authenticatedUser
+  );
   return {
     userId: ctx.userId,
     userName: ctx.userName,

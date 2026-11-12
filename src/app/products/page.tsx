@@ -90,6 +90,7 @@ export default function ProductsPage() {
           <Button
             variant="primary"
             size="sm"
+            data-tour="register-product-btn"
             onClick={() => setIsRegisterOpen(true)}
             className="cursor-pointer"
           >
@@ -180,7 +181,7 @@ export default function ProductsPage() {
           ))}
         </div>
 
-        <div className="w-full sm:w-72 relative">
+        <div className="w-full sm:w-72 relative" data-tour="products-search">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
           <input
             type="text"
@@ -193,7 +194,7 @@ export default function ProductsPage() {
       </div>
 
       {/* Products Table Card */}
-      <div className="rounded-xl border border-slate-800/80 bg-slate-900/60 backdrop-blur-md shadow-xl overflow-hidden">
+      <div className="rounded-xl border border-slate-800/80 bg-slate-900/60 backdrop-blur-md shadow-xl overflow-hidden" data-tour="products-table">
         <div className="p-5 border-b border-slate-800/80 flex flex-row items-center justify-between">
           <div>
             <h2 className="text-base font-bold text-white tracking-tight">Active Workspace Products</h2>
