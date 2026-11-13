@@ -37,6 +37,19 @@ export async function GET(
     }
 
     // Query active members with user details
+    const { searchParams } = new URL(request.url);
+    const statusParam = searchParams.get("status") || "active";
+
+    let statusCondition = "AND wm.status = 'active'";
+    const queryParams: any[] = [id];
+
+    if (statusParam === "all") {
+      statusCondition = "";
+    } else if (statusParam !== "active") {
+      statusCondition = "AND wm.status = $2";
+      queryParams.push(statusParam);
+    }
+
     let members: Array<{
       id: string;
       userId: string;
@@ -75,9 +88,9 @@ export async function GET(
          FROM workspace_memberships wm
          LEFT JOIN auth.users u ON wm.user_id = u.id
          LEFT JOIN workspace_roles wr ON wm.custom_role_id = wr.id
-         WHERE wm.workspace_id = $1
+         WHERE wm.workspace_id = $1 ${statusCondition}
          ORDER BY wm.created_at ASC`,
-        [id]
+        queryParams
       );
 
       members = res.rows.map((r) => ({
@@ -106,9 +119,9 @@ export async function GET(
         `SELECT wm.id, wm.user_id, wm.role, wm.custom_role_id, wr.name as custom_role_name, wm.status, wm.created_at
          FROM workspace_memberships wm
          LEFT JOIN workspace_roles wr ON wm.custom_role_id = wr.id
-         WHERE wm.workspace_id = $1
+         WHERE wm.workspace_id = $1 ${statusCondition}
          ORDER BY wm.created_at ASC`,
-        [id]
+        queryParams
       );
 
       members = res.rows.map((r) => ({

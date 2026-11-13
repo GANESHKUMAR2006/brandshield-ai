@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import Link from "next/link";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Button } from "@/components/ui/Button";
@@ -78,56 +78,6 @@ const ROLE_LABELS: Record<ReviewerRole, { label: string; badgeClass: string; des
   },
 };
 
-const DEFAULT_MEMBERS: WorkspaceMemberItem[] = [
-  {
-    id: "mem-001",
-    userId: "usr-001",
-    role: "admin",
-    status: "active",
-    email: "sarah.chen@dermaglow.com",
-    name: "Sarah Chen",
-    joinedAt: "2026-01-15T09:00:00Z",
-  },
-  {
-    id: "mem-002",
-    userId: "usr-002",
-    role: "compliance_reviewer",
-    status: "active",
-    email: "marcus.vance@dermaglow.com",
-    name: "Marcus Vance",
-    joinedAt: "2026-02-01T14:30:00Z",
-  },
-  {
-    id: "mem-003",
-    userId: "usr-003",
-    role: "legal_reviewer",
-    status: "active",
-    email: "elena.rostova@dermaglow.com",
-    name: "Elena Rostova",
-    joinedAt: "2026-02-18T11:15:00Z",
-  },
-  {
-    id: "mem-004",
-    userId: "usr-004",
-    role: "creator",
-    status: "active",
-    email: "alex.rivera@dermaglow.com",
-    name: "Alex Rivera",
-    joinedAt: "2026-03-01T16:00:00Z",
-  },
-];
-
-const DEFAULT_INVITATIONS: WorkspaceInvitationItem[] = [
-  {
-    id: "inv-001",
-    email: "jordan.taylor@dermaglow.com",
-    role: "compliance_reviewer",
-    status: "pending",
-    expiresAt: new Date(Date.now() + 86400000 * 5).toISOString(),
-    createdAt: new Date().toISOString(),
-  },
-];
-
 export default function SettingsPage() {
   const { openWelcome } = useTour();
   const { user } = useSession();
@@ -148,13 +98,31 @@ export default function SettingsPage() {
   const [userEmail, setUserEmail] = useState<string>("");
   const [isArchiveModalOpen, setIsArchiveModalOpen] = useState(false);
 
-  // Team & Role management state
-  const [members, setMembers] = useState<WorkspaceMemberItem[]>(DEFAULT_MEMBERS);
-  const [invitations, setInvitations] = useState<WorkspaceInvitationItem[]>(DEFAULT_INVITATIONS);
+  // Team & Role management state (initialized without fabricated records)
+  const [members, setMembers] = useState<WorkspaceMemberItem[]>([]);
+  const [invitations, setInvitations] = useState<WorkspaceInvitationItem[]>([]);
   const [customRoles, setCustomRoles] = useState<RoleItem[]>([]);
   const [isLoadingTeam, setIsLoadingTeam] = useState(false);
   const [teamError, setTeamError] = useState<string | null>(null);
+  const [invitationsForbidden, setInvitationsForbidden] = useState(false);
+  const [invitationsError, setInvitationsError] = useState<string | null>(null);
   const [teamNotification, setTeamNotification] = useState<{ type: "success" | "error"; message: string } | null>(null);
+
+  // Filtered pending invitations: strictly status === 'pending' and non-expired
+  const pendingInvitations = useMemo(
+    () =>
+      invitations.filter(
+        (inv) =>
+          inv.status === "pending" &&
+          (!inv.expiresAt || new Date(inv.expiresAt).getTime() > Date.now())
+      ),
+    [invitations]
+  );
+
+  // Sequence and AbortController refs to prevent race conditions during workspace switching
+  const teamFetchSeqRef = useRef<number>(0);
+  const teamAbortControllerRef = useRef<AbortController | null>(null);
+  const prevUserIdRef = useRef<string | undefined>(undefined);
 
   // Organization Join Code state
   const [joinCodeStatus, setJoinCodeStatus] = useState<{
@@ -281,11 +249,57 @@ export default function SettingsPage() {
     };
   }, [user]);
 
+  // Unmount cleanup: cancel any pending in-flight requests
+  useEffect(() => {
+    return () => {
+      if (teamAbortControllerRef.current) {
+        teamAbortControllerRef.current.abort();
+      }
+    };
+  }, []);
+
+  // Account switching isolation: if authenticated user ID changes, clear stale tenant data immediately
+  useEffect(() => {
+    if (user?.userId) {
+      if (prevUserIdRef.current && prevUserIdRef.current !== user.userId) {
+        if (teamAbortControllerRef.current) {
+          teamAbortControllerRef.current.abort();
+        }
+        setMembers([]);
+        setInvitations([]);
+        setTeamError(null);
+        setInvitationsForbidden(false);
+        setInvitationsError(null);
+        setCustomRoles([]);
+        setJoinRequests([]);
+        setJoinCodeStatus(null);
+        setActiveJoinCode(null);
+        loadedTeamWorkspaceIdRef.current = null;
+      }
+      prevUserIdRef.current = user.userId;
+    }
+  }, [user?.userId]);
+
   // Update workspace metadata when workspaceId changes to a different workspace
   useEffect(() => {
     if (workspaceId && loadedWorkspaceIdRef.current !== workspaceId) {
       loadedWorkspaceIdRef.current = workspaceId;
       loadedTeamWorkspaceIdRef.current = null;
+      // Immediately cancel in-flight requests for prior tenant
+      if (teamAbortControllerRef.current) {
+        teamAbortControllerRef.current.abort();
+      }
+      // Immediately clear prior tenant's data so stale members/invitations are never visible
+      setMembers([]);
+      setInvitations([]);
+      setTeamError(null);
+      setInvitationsForbidden(false);
+      setInvitationsError(null);
+      setCustomRoles([]);
+      setJoinRequests([]);
+      setJoinCodeStatus(null);
+      setActiveJoinCode(null);
+
       fetchWorkspaceDetails(workspaceId)
         .then((ws) => {
           if (ws?.name) setWorkspaceName(ws.name);
@@ -346,7 +360,7 @@ export default function SettingsPage() {
     }
   }, [workspaceId]);
 
-  // Tab-specific concurrent team data loading
+  // Tab-specific concurrent team data loading with request sequence guards & AbortController
   const loadTeamData = useCallback(
     async (force: boolean = false) => {
       if (!workspaceId) return;
@@ -356,10 +370,21 @@ export default function SettingsPage() {
         return;
       }
 
+      // Abort prior in-flight request
+      if (teamAbortControllerRef.current) {
+        teamAbortControllerRef.current.abort();
+      }
+      const abortController = new AbortController();
+      teamAbortControllerRef.current = abortController;
+      const currentSeq = ++teamFetchSeqRef.current;
+      const targetWorkspaceId = workspaceId;
+
       setIsLoadingTeam(true);
       setIsLoadingJoinCode(true);
       setIsLoadingJoinRequests(true);
       setTeamError(null);
+      setInvitationsForbidden(false);
+      setInvitationsError(null);
       setJoinCodeError(null);
       setJoinRequestsError(null);
 
@@ -367,40 +392,63 @@ export default function SettingsPage() {
         // Execute all 5 independent team section queries concurrently via Promise.allSettled
         const [membersResult, invitesResult, rolesResult, joinCodeResult, joinRequestsResult] =
           await Promise.allSettled([
-            fetchWorkspaceMembers(workspaceId),
-            fetchWorkspaceInvitations(workspaceId),
-            fetchWorkspaceRoles(workspaceId),
-            fetch(`/api/workspaces/${workspaceId}/join-code`).then(async (r) => {
+            fetchWorkspaceMembers(targetWorkspaceId, { signal: abortController.signal }),
+            fetchWorkspaceInvitations(targetWorkspaceId, { signal: abortController.signal }),
+            fetchWorkspaceRoles(targetWorkspaceId),
+            fetch(`/api/workspaces/${targetWorkspaceId}/join-code`, { signal: abortController.signal }).then(async (r) => {
               const data = await r.json().catch(() => null);
               if (!r.ok || !data?.success) throw new Error(data?.error || "Failed to load join code");
               return data;
             }),
-            fetch(`/api/workspaces/${workspaceId}/join-requests`).then(async (r) => {
+            fetch(`/api/workspaces/${targetWorkspaceId}/join-requests`, { signal: abortController.signal }).then(async (r) => {
               const data = await r.json().catch(() => null);
               if (!r.ok || !data?.success) throw new Error(data?.error || "Failed to load join requests");
               return data;
             }),
           ]);
 
-        // 1. Members
+        // If another request was dispatched or aborted, ignore this response
+        if (teamFetchSeqRef.current !== currentSeq || abortController.signal.aborted) {
+          return;
+        }
+
+        // 1. Members: real data or clean error (no fabricated fallback)
         if (membersResult.status === "fulfilled" && Array.isArray(membersResult.value)) {
-          setMembers(membersResult.value.length > 0 ? membersResult.value : DEFAULT_MEMBERS);
+          setMembers(membersResult.value);
+          setTeamError(null);
         } else {
-          setMembers(DEFAULT_MEMBERS);
+          setMembers([]);
           if (membersResult.status === "rejected") {
+            const err = membersResult.reason;
             setTeamError(
-              membersResult.reason instanceof Error
-                ? membersResult.reason.message
-                : "Failed to load workspace members"
+              err instanceof Error ? err.message : "Failed to load workspace members"
             );
           }
         }
 
-        // 2. Invitations
+        // 2. Invitations: real data or permission distinction (no fabricated fallback)
         if (invitesResult.status === "fulfilled" && Array.isArray(invitesResult.value)) {
           setInvitations(invitesResult.value);
+          setInvitationsForbidden(false);
+          setInvitationsError(null);
         } else {
-          setInvitations(DEFAULT_INVITATIONS);
+          setInvitations([]);
+          if (invitesResult.status === "rejected") {
+            const reason = invitesResult.reason;
+            const isForbidden =
+              reason?.status === 403 ||
+              (typeof reason?.message === "string" &&
+                reason.message.toLowerCase().includes("forbidden"));
+            if (isForbidden) {
+              setInvitationsForbidden(true);
+              setInvitationsError(null);
+            } else {
+              setInvitationsForbidden(false);
+              setInvitationsError(
+                reason instanceof Error ? reason.message : "Failed to load invitations"
+              );
+            }
+          }
         }
 
         // 3. Custom Roles
@@ -442,13 +490,16 @@ export default function SettingsPage() {
         }
         setIsLoadingJoinRequests(false);
 
-        loadedTeamWorkspaceIdRef.current = workspaceId;
-      } catch {
-        setMembers(DEFAULT_MEMBERS);
-        setInvitations(DEFAULT_INVITATIONS);
-        setIsLoadingTeam(false);
-        setIsLoadingJoinCode(false);
-        setIsLoadingJoinRequests(false);
+        loadedTeamWorkspaceIdRef.current = targetWorkspaceId;
+      } catch (err: any) {
+        if (teamFetchSeqRef.current === currentSeq && !abortController.signal.aborted) {
+          setMembers([]);
+          setInvitations([]);
+          setTeamError(err instanceof Error ? err.message : "Failed to load team data");
+          setIsLoadingTeam(false);
+          setIsLoadingJoinCode(false);
+          setIsLoadingJoinRequests(false);
+        }
       }
     },
     [workspaceId]
@@ -827,7 +878,7 @@ export default function SettingsPage() {
           <Users className="w-4 h-4 text-cyan-400" />
           <span>Team & Members</span>
           <span className="ml-1 text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-full bg-slate-800 text-slate-300">
-            {members.length}
+            {isLoadingTeam ? "..." : members.length}
           </span>
         </button>
 
@@ -1161,7 +1212,7 @@ export default function SettingsPage() {
               {isLoadingTeam && (
                 <div className="flex items-center gap-1.5 text-xs text-slate-400">
                   <RefreshCw className="w-3.5 h-3.5 animate-spin text-cyan-400" />
-                  <span>Loading...</span>
+                  <span>Loading members...</span>
                 </div>
               )}
             </div>
@@ -1178,95 +1229,146 @@ export default function SettingsPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/50 text-slate-200">
-                  {members.map((member) => {
-                    const initials = (member.name || member.email)
-                      .split(" ")
-                      .map((n) => n[0])
-                      .join("")
-                      .substring(0, 2)
-                      .toUpperCase();
-
-                    return (
-                      <tr key={member.id} className="hover:bg-slate-800/30 transition-colors">
+                  {isLoadingTeam ? (
+                    Array.from({ length: 3 }).map((_, i) => (
+                      <tr key={`member-skeleton-${i}`} className="animate-pulse border-b border-slate-800/40">
                         <td className="py-3.5 px-6">
                           <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-full bg-violet-900/60 border border-violet-700/60 flex items-center justify-center font-bold text-[11px] text-violet-200 shrink-0">
-                              {initials}
-                            </div>
-                            <div>
-                              <div className="font-semibold text-white">
-                                {member.name || member.email.split("@")[0]}
-                              </div>
-                              <div className="text-[11px] text-slate-400 font-mono flex items-center gap-1">
-                                <Mail className="w-3 h-3 text-slate-500" />
-                                {member.email}
-                              </div>
+                            <div className="w-8 h-8 rounded-full bg-slate-800 shrink-0" />
+                            <div className="space-y-1.5 flex-1">
+                              <div className="h-3.5 bg-slate-800 rounded w-28" />
+                              <div className="h-2.5 bg-slate-800/60 rounded w-40" />
                             </div>
                           </div>
                         </td>
-
                         <td className="py-3.5 px-6">
-                          <div className="flex items-center gap-2">
-                            <select
-                              value={member.customRoleId ? `custom:${member.customRoleId}` : member.role}
-                              onChange={(e) => handleRoleChange(member.id, e.target.value)}
-                              className="bg-slate-950 border border-slate-700 hover:border-slate-600 rounded-lg px-2.5 py-1 text-xs text-white font-medium cursor-pointer focus:outline-none focus:border-cyan-500"
-                              aria-label={`Change role for ${member.name || member.email}`}
-                            >
-                              <optgroup label="Built-in Roles">
-                                <option value="admin">Administrator</option>
-                                <option value="compliance_reviewer">Compliance Reviewer</option>
-                                <option value="legal_reviewer">Legal Reviewer</option>
-                                <option value="creator">Creator</option>
-                                <option value="viewer">Viewer</option>
-                              </optgroup>
-                              {customRoles.length > 0 && (
-                                <optgroup label="Custom Roles">
-                                  {customRoles.map((cr) => (
-                                    <option key={cr.id} value={`custom:${cr.id}`}>
-                                      {cr.name} (Custom)
-                                    </option>
-                                  ))}
-                                </optgroup>
-                              )}
-                            </select>
-                            {member.customRoleName && (
-                              <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold bg-cyan-950/80 text-cyan-300 border border-cyan-800/60 shrink-0">
-                                Custom
-                              </span>
-                            )}
-                          </div>
+                          <div className="h-6 bg-slate-800 rounded w-32" />
                         </td>
-
                         <td className="py-3.5 px-6">
-                          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-950/80 text-emerald-300 border border-emerald-800/60">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                            {member.status || "Active"}
-                          </span>
+                          <div className="h-5 bg-slate-800 rounded-full w-16" />
                         </td>
-
-                        <td className="py-3.5 px-6 text-slate-400 font-mono text-[11px]">
-                          {new Date(member.joinedAt).toLocaleDateString("en-US", {
-                            year: "numeric",
-                            month: "short",
-                            day: "numeric",
-                          })}
+                        <td className="py-3.5 px-6">
+                          <div className="h-3.5 bg-slate-800 rounded w-20" />
                         </td>
-
                         <td className="py-3.5 px-6 text-right">
-                          <button
-                            type="button"
-                            onClick={() => handleInitiateRemove(member)}
-                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-rose-400 hover:text-rose-300 hover:bg-rose-950/40 border border-transparent hover:border-rose-900/50 transition-all text-xs cursor-pointer"
-                            title="Remove member"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                            <span>Remove</span>
-                          </button>
+                          <div className="h-6 bg-slate-800 rounded w-16 ml-auto" />
                         </td>
                       </tr>
-                    );
-                  })}
+                    ))
+                  ) : teamError ? (
+                    <tr>
+                      <td colSpan={5} className="py-8 px-6 text-center">
+                        <div className="flex flex-col items-center justify-center gap-2">
+                          <AlertTriangle className="w-5 h-5 text-rose-400" />
+                          <p className="text-xs text-rose-300 font-medium">{teamError}</p>
+                          <button
+                            type="button"
+                            onClick={() => loadTeamData(true)}
+                            className="mt-2 inline-flex items-center gap-1.5 px-3 py-1 rounded-md bg-slate-800 hover:bg-slate-700 text-xs text-slate-200 border border-slate-700 cursor-pointer transition-colors"
+                          >
+                            <RefreshCw className="w-3.5 h-3.5" />
+                            <span>Retry</span>
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : members.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="py-8 px-6 text-center text-xs text-slate-400">
+                        No active members found in this workspace.
+                      </td>
+                    </tr>
+                  ) : (
+                    members.map((member) => {
+                      const initials = (member.name || member.email)
+                        .split(" ")
+                        .map((n) => n[0])
+                        .join("")
+                        .substring(0, 2)
+                        .toUpperCase();
+
+                      return (
+                        <tr key={member.id} className="hover:bg-slate-800/30 transition-colors">
+                          <td className="py-3.5 px-6">
+                            <div className="flex items-center gap-3">
+                              <div className="w-8 h-8 rounded-full bg-violet-900/60 border border-violet-700/60 flex items-center justify-center font-bold text-[11px] text-violet-200 shrink-0">
+                                {initials}
+                              </div>
+                              <div>
+                                <div className="font-semibold text-white">
+                                  {member.name || member.email.split("@")[0]}
+                                </div>
+                                <div className="text-[11px] text-slate-400 font-mono flex items-center gap-1">
+                                  <Mail className="w-3 h-3 text-slate-500" />
+                                  {member.email}
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+
+                          <td className="py-3.5 px-6">
+                            <div className="flex items-center gap-2">
+                              <select
+                                value={member.customRoleId ? `custom:${member.customRoleId}` : member.role}
+                                onChange={(e) => handleRoleChange(member.id, e.target.value)}
+                                className="bg-slate-950 border border-slate-700 hover:border-slate-600 rounded-lg px-2.5 py-1 text-xs text-white font-medium cursor-pointer focus:outline-none focus:border-cyan-500"
+                                aria-label={`Change role for ${member.name || member.email}`}
+                              >
+                                <optgroup label="Built-in Roles">
+                                  <option value="admin">Administrator</option>
+                                  <option value="compliance_reviewer">Compliance Reviewer</option>
+                                  <option value="legal_reviewer">Legal Reviewer</option>
+                                  <option value="creator">Creator</option>
+                                  <option value="viewer">Viewer</option>
+                                </optgroup>
+                                {customRoles.length > 0 && (
+                                  <optgroup label="Custom Roles">
+                                    {customRoles.map((cr) => (
+                                      <option key={cr.id} value={`custom:${cr.id}`}>
+                                        {cr.name} (Custom)
+                                      </option>
+                                    ))}
+                                  </optgroup>
+                                )}
+                              </select>
+                              {member.customRoleName && (
+                                <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold bg-cyan-950/80 text-cyan-300 border border-cyan-800/60 shrink-0">
+                                  Custom
+                                </span>
+                              )}
+                            </div>
+                          </td>
+
+                          <td className="py-3.5 px-6">
+                            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-950/80 text-emerald-300 border border-emerald-800/60">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                              {member.status || "Active"}
+                            </span>
+                          </td>
+
+                          <td className="py-3.5 px-6 text-slate-400 font-mono text-[11px]">
+                            {new Date(member.joinedAt).toLocaleDateString("en-US", {
+                              year: "numeric",
+                              month: "short",
+                              day: "numeric",
+                            })}
+                          </td>
+
+                          <td className="py-3.5 px-6 text-right">
+                            <button
+                              type="button"
+                              onClick={() => handleInitiateRemove(member)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-rose-400 hover:text-rose-300 hover:bg-rose-950/40 border border-transparent hover:border-rose-900/50 transition-all text-xs cursor-pointer"
+                              title="Remove member"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              <span>Remove</span>
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
                 </tbody>
               </table>
             </div>
@@ -1276,16 +1378,46 @@ export default function SettingsPage() {
           <div className="rounded-xl border border-slate-800/80 bg-slate-900/60 backdrop-blur-md overflow-hidden shadow-xl">
             <div className="px-6 py-4 border-b border-slate-800/80 flex items-center justify-between">
               <div>
-                <h3 className="text-sm font-bold text-white">Pending Invitations ({invitations.length})</h3>
+                <h3 className="text-sm font-bold text-white">Pending Invitations ({pendingInvitations.length})</h3>
                 <p className="text-xs text-slate-400 mt-0.5">
                   Invitations dispatched with secure single-use tokens awaiting activation
                 </p>
               </div>
+              {isLoadingTeam && (
+                <div className="flex items-center gap-1.5 text-xs text-slate-400">
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin text-cyan-400" />
+                  <span>Checking...</span>
+                </div>
+              )}
             </div>
 
-            {invitations.length === 0 ? (
+            {isLoadingTeam ? (
+              <div className="p-8 text-center text-xs text-slate-400 flex items-center justify-center gap-2">
+                <RefreshCw className="w-4 h-4 animate-spin text-cyan-400" />
+                <span>Checking pending invitations...</span>
+              </div>
+            ) : invitationsForbidden ? (
+              <div className="p-8 text-center text-xs text-slate-400 flex flex-col items-center justify-center gap-2">
+                <Lock className="w-5 h-5 text-amber-400" />
+                <p className="font-medium text-slate-300">Only workspace administrators can view pending invitations.</p>
+                <p className="text-[11px] text-slate-500">Contact your workspace administrator to manage team invitations.</p>
+              </div>
+            ) : invitationsError ? (
+              <div className="p-8 text-center text-xs text-rose-400 flex flex-col items-center justify-center gap-2">
+                <AlertTriangle className="w-5 h-5 text-rose-400" />
+                <p>{invitationsError}</p>
+                <button
+                  type="button"
+                  onClick={() => loadTeamData(true)}
+                  className="mt-1 inline-flex items-center gap-1.5 px-3 py-1 rounded-md bg-slate-800 hover:bg-slate-700 text-xs text-slate-200 border border-slate-700 cursor-pointer"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  <span>Retry</span>
+                </button>
+              </div>
+            ) : pendingInvitations.length === 0 ? (
               <div className="p-8 text-center text-xs text-slate-500">
-                No pending invitations for this workspace. Use the &ldquo;Invite Member&rdquo; button above to invite colleagues.
+                No pending invitations. Use the &ldquo;Invite Member&rdquo; button above to invite colleagues.
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -1300,7 +1432,7 @@ export default function SettingsPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/50 text-slate-200">
-                    {invitations.map((inv) => {
+                    {pendingInvitations.map((inv) => {
                       const isExpired = new Date(inv.expiresAt).getTime() < Date.now();
                       const daysLeft = Math.max(
                         0,

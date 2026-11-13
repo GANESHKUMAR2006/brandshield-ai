@@ -36,6 +36,32 @@ export async function GET(
       );
     }
 
+    const { searchParams } = new URL(request.url);
+    const statusParam = searchParams.get("status") || "pending";
+
+    let sql = `
+      SELECT id, email, role, status, expires_at, created_at
+      FROM workspace_invitations
+      WHERE workspace_id = $1
+    `;
+    const paramsList: any[] = [id];
+
+    if (statusParam === "pending") {
+      sql += ` AND status = 'pending' AND expires_at > now()`;
+    } else if (statusParam === "all") {
+      // Return full history without filtering
+    } else if (statusParam === "expired") {
+      sql += ` AND (status = 'expired' OR (status = 'pending' AND expires_at <= now()))`;
+    } else if (["accepted", "revoked"].includes(statusParam)) {
+      sql += ` AND status = $2`;
+      paramsList.push(statusParam);
+    } else {
+      // Safe default: only pending active invitations
+      sql += ` AND status = 'pending' AND expires_at > now()`;
+    }
+
+    sql += ` ORDER BY created_at DESC`;
+
     const res = await query<{
       id: string;
       email: string;
@@ -43,13 +69,7 @@ export async function GET(
       status: string;
       expires_at: string;
       created_at: string;
-    }>(
-      `SELECT id, email, role, status, expires_at, created_at
-       FROM workspace_invitations
-       WHERE workspace_id = $1
-       ORDER BY created_at DESC`,
-      [id]
-    );
+    }>(sql, paramsList);
 
     return NextResponse.json({
       success: true,

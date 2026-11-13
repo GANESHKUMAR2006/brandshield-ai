@@ -998,13 +998,21 @@ export async function archiveWorkspace(
   return data;
 }
 
-export async function fetchWorkspaceMembers(id: string): Promise<WorkspaceMemberItem[]> {
-  const res = await workspaceFetch(`/api/workspaces/${id}/members`, { cache: "no-store" });
-  const data = await res.json();
-  if (!res.ok || !data.success) {
-    throw new Error(data.error || "Failed to load workspace members");
+export async function fetchWorkspaceMembers(
+  id: string,
+  options?: { signal?: AbortSignal; status?: string }
+): Promise<WorkspaceMemberItem[]> {
+  const url = options?.status
+    ? `/api/workspaces/${id}/members?status=${encodeURIComponent(options.status)}`
+    : `/api/workspaces/${id}/members`;
+  const res = await workspaceFetch(url, { cache: "no-store", signal: options?.signal });
+  const data = await res.json().catch(() => null);
+  if (!res.ok || !data?.success) {
+    const error: any = new Error(data?.error || "Failed to load workspace members");
+    error.status = res.status;
+    throw error;
   }
-  return data.members;
+  return data.members || [];
 }
 
 export async function updateMemberRole(
@@ -1102,13 +1110,21 @@ export async function removeWorkspaceMember(workspaceId: string, memberId: strin
   }
 }
 
-export async function fetchWorkspaceInvitations(workspaceId: string): Promise<WorkspaceInvitationItem[]> {
-  const res = await workspaceFetch(`/api/workspaces/${workspaceId}/invitations`, { cache: "no-store" });
-  const data = await res.json();
-  if (!res.ok || !data.success) {
-    throw new Error(data.error || "Failed to load invitations");
+export async function fetchWorkspaceInvitations(
+  workspaceId: string,
+  options?: { signal?: AbortSignal; status?: string }
+): Promise<WorkspaceInvitationItem[]> {
+  const url = options?.status
+    ? `/api/workspaces/${workspaceId}/invitations?status=${encodeURIComponent(options.status)}`
+    : `/api/workspaces/${workspaceId}/invitations`;
+  const res = await workspaceFetch(url, { cache: "no-store", signal: options?.signal });
+  const data = await res.json().catch(() => null);
+  if (!res.ok || !data?.success) {
+    const error: any = new Error(data?.error || "Failed to load invitations");
+    error.status = res.status;
+    throw error;
   }
-  return data.invitations;
+  return data.invitations || [];
 }
 
 export async function createWorkspaceInvitation(
